@@ -47,16 +47,16 @@ void CUDAHandler::updateDraw(float dt)
     // }
     // cudaGraphicsSubResourceGetMappedArray(&array, cudaResource, 0, 0);
 
-    printf("Width: %d, Height: %d\n", width, height);
+    // printf("Width: %d, Height: %d\n", width, height);
     // clear graphics
-    // int threads = 16; 
-    // dim3 clearBlock(threads, threads);
-    // dim3 clearGrid((width + clearBlock.x -1) / clearBlock.x, (height + clearBlock.y - 1) / clearBlock.y);
-    // clearSurface_kernel<<<clearGrid, clearBlock>>>(surface, width, height, BLUE_PLANET);
+    int threads = 16; 
+    dim3 clearBlock(threads, threads);
+    dim3 clearGrid((width + clearBlock.x -1) / clearBlock.x, (height + clearBlock.y - 1) / clearBlock.y);
+    clearSurface_kernel<<<clearGrid, clearBlock>>>(surface, width, height, BLUE_PLANET);
 
-    // drawCircle_kernel<<<1, 1>>>(surface, width, height, width/2, height/2, 200, SUN_YELLOW, 0, 2 );
-    // checkCuda(cudaPeekAtLastError());
-    // checkCuda(cudaDeviceSynchronize());
+    drawCircle_kernel<<<1, 1>>>(surface, width, height, width/2, height/2, 200, SUN_YELLOW, 1, 4 );
+    checkCuda(cudaPeekAtLastError());
+    checkCuda(cudaDeviceSynchronize());
 
     cudaDestroySurfaceObject(surface);
     cudaGraphicsUnmapResources(1, &cudaResource);
