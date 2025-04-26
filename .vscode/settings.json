@@ -1,0 +1,6 @@
+{
+    "cmake.sourceDirectory": "/home/dario/learning/cudaGraphicsTemplate/sim",
+    "files.associations": {
+        "string": "cpp"
+    }
+}
