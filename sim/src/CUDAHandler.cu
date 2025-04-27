@@ -44,9 +44,9 @@ void CUDAHandler::updateDraw(float dt)
     dim3 clearGrid((width + clearBlock.x -1) / clearBlock.x, (height + clearBlock.y - 1) / clearBlock.y);
     clearSurface_kernel<<<clearGrid, clearBlock>>>(surface, width, height, BLUE_PLANET);
 
-    drawCircle_kernel<<<1, 1>>>(surface, width, height, width/2, height/2, 200, SUN_YELLOW, 1, 4 );
+    drawCircle_kernel<<<1, 1>>>(surface, width, height, width/2, height/2, 200, SUN_YELLOW, 1, 4, zoom, panX, panY);
 
-    drawGlowingCircle<<<1, 1>>>(surface, width, height, width / 2, height / 2, 50, RED_MERCURY, 1.5f);
+    drawGlowingCircle<<<1, 1>>>(surface, width, height, width / 2, height / 2, 50, RED_MERCURY, 1.5f, zoom, panX, panY);
     checkCuda(cudaPeekAtLastError());
     checkCuda(cudaDeviceSynchronize());
 

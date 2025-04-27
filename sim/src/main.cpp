@@ -115,14 +115,14 @@ int main(int argc, char** argv) {
     ImGui::StyleColorsDark();
 
     // Input hooks
-    // glutKeyboardFunc(SimulationUI::keyboardCallback);
+    glutKeyboardFunc(SimulationUI::keyboardCallback);
     // glutKeyboardUpFunc(ImGui_ImplGLUT_KeyboardUpFunc);
     // glutSpecialFunc(ImGui_ImplGLUT_SpecialFunc);
     // glutSpecialUpFunc(ImGui_ImplGLUT_SpecialUpFunc);
     
-    // glutMouseFunc(SimulationUI::mouseCallback);
-    // glutMouseWheelFunc(SimulationUI::mouseWheelCallback);
-    // glutMotionFunc([](int x, int y) { simUI.mouseMotionCallback(x, y); });
+    glutMouseFunc(SimulationUI::mouseCallback);
+    glutMouseWheelFunc(SimulationUI::mouseWheelCallback);
+    glutMotionFunc([](int x, int y) { simUI.mouseMotionCallback(x, y); });
    
     
 
@@ -171,27 +171,6 @@ void findMonitors() {
     SDL_Quit();        
 }
 
-// void imGuiMonitorSelector() {
-//     static bool showMonitorSelector = true; // We control if it's visible
-//     static int selectedMonitor = currentMonitor;
-
-//     if (!showMonitorSelector)
-//         return; // Don't even draw the window if it's hidden
-
-//     ImGui::Begin("Monitor Selector", &showMonitorSelector, ImGuiWindowFlags_AlwaysAutoResize);
-
-//     if (ImGui::Combo("Choose Monitor", &selectedMonitor, [](void* data, int idx, const char** out_text) {
-//         const std::vector<MonitorInfo>* monitors = static_cast<const std::vector<MonitorInfo>*>(data);
-//         if (out_text) *out_text = monitors->at(idx).name.c_str();
-//         return true;
-//     }, (void*)&monitors, monitors.size())) {
-//         currentMonitor = selectedMonitor;
-//         moveWindow = true;
-//         showMonitorSelector = false; // <-- Close the window after selection
-//     }
-
-//     ImGui::End();
-// }
 
 void imGuiMonitorSelector() {
     ImGui::SetNextWindowCollapsed(true, ImGuiCond_Once); // Collapsed the first time

@@ -1,4 +1,5 @@
 #include "cudaKernels.cuh"
+#include "helper_math.h"
 
 __device__
 void drawPixel(cudaSurfaceObject_t surface, int x, int y, uchar4 color, int width, int height)
@@ -116,8 +117,12 @@ __global__ void clearSurface_kernel(cudaSurfaceObject_t surface, int width, int 
 
 
 
-__global__ void drawCircle_kernel(cudaSurfaceObject_t surface, int width, int height, int cx, int cy, int radius, uchar4 color, bool outline, int thickness )
+__global__ void drawCircle_kernel(cudaSurfaceObject_t surface, int width, int height, int cx, int cy, int radius, uchar4 color, bool outline, int thickness, float zoom, float panX, float panY)
 {
+    cx = (int) (cx + panX) * zoom + width / 2.0f;
+    cy = (int) (cy + panY) * zoom + height/ 2.0f;
+
+    radius *= zoom;
     if (outline){ 
         if (thickness > 0) 
             drawRing(surface, cx, cy, radius, thickness, color, width, height);
@@ -128,8 +133,12 @@ __global__ void drawCircle_kernel(cudaSurfaceObject_t surface, int width, int he
 }
 
 
-__global__ void drawGlowingCircle(cudaSurfaceObject_t surface, int width, int height, int cx, int cy, int radius, uchar4 color, float glowExtent) {
+__global__ void drawGlowingCircle(cudaSurfaceObject_t surface, int width, int height, int cx, int cy, int radius, uchar4 color, float glowExtent, float zoom, float panX, float panY) {
 
+    cx = (int) (cx + panX) * zoom + width / 2.0f;
+    cy = (int) (cy + panY) * zoom + height/ 2.0f;
+    
+    radius *= zoom;
     drawFilledCircle(surface, cx, cy, radius, color, width, height);
 
     int rSquared = radius * radius;

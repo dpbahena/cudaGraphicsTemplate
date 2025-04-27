@@ -17,6 +17,7 @@ void SimulationUI::render(CUDAHandler &sim)
 
         ImGui::Begin("Simulation Control");
         ImGui::Separator;
+        ImGui::Text("Zoom Factor: %f", sim.zoom);
         ImGui::Text("FPS: %.1f", ImGui::GetIO().Framerate);
         ImGui::Text("Actual FPS: %.1f", 1.0f / sim.dt);
         
@@ -128,67 +129,64 @@ void SimulationUI::render(CUDAHandler &sim)
     // }
 // }
 
-// void SimulationUI::handleKeypress(unsigned char key, int x, int y)
-// {
-//     ImGuiIO& io = ImGui::GetIO();
-//     if (io.WantCaptureKeyboard) return;
+void SimulationUI::handleKeypress(unsigned char key, int x, int y)
+{
+    ImGuiIO& io = ImGui::GetIO();
+    if (io.WantCaptureKeyboard) return;
 
-//     if (key == 27){
-//         exit(0); 
-//     }
+    if (key == 27){
+        exit(0); 
+    }
+    // ? Handle other keys
+}
 
+void SimulationUI::keyboardCallback(unsigned char key, int x, int y)
+{
+    // Step 1: let ImGui handle the keyboard input
+    ImGui_ImplGLUT_KeyboardFunc(key, x, y);
 
+    // Step 2: Pass it to your own logic
+    if (instance){
+        instance->handleKeypress(key, x, y);
+    }
+}
 
-//     // ? Handle other keys
-// }
+void SimulationUI::mouseCallback(int button, int state, int x, int y)
+{
+    // Step 1: Let ImGui handle input (so UI stays interactive)
+    ImGui_ImplGLUT_MouseFunc(button, state, x, y);
 
-// void SimulationUI::keyboardCallback(unsigned char key, int x, int y)
-// {
-//     // Step 1: let ImGui handle the keyboard input
-//     ImGui_ImplGLUT_KeyboardFunc(key, x, y);
-
-//     // Step 2: Pass it to your own logic
-//     if (instance){
-//         instance->handleKeypress(key, x, y);
-//     }
-// }
-
-// void SimulationUI::mouseCallback(int button, int state, int x, int y)
-// {
-//     // Step 1: Let ImGui handle input (so UI stays interactive)
-//     ImGui_ImplGLUT_MouseFunc(button, state, x, y);
-
-//     // Step 2: Pass it to your own logic
-//     if (instance){
-//         instance->handleMouseClick(button, state, x, y);
-//     }
+    // Step 2: Pass it to your own logic
+    if (instance){
+        instance->handleMouseClick(button, state, x, y);
+    }
 
 
-// }
+}
 
-// void SimulationUI::mouseMotionCallback(int x, int y)
-// {
+void SimulationUI::mouseMotionCallback(int x, int y)
+{
     
-    // CUDAHandler* sim = CUDAHandler::instance;
+    CUDAHandler* sim = CUDAHandler::instance;
     // * Let ImGui handles mouse events first
-    // ImGui_ImplGLUT_MotionFunc(x, y);
+    ImGui_ImplGLUT_MotionFunc(x, y);
 
-    // ImGuiIO& io = ImGui::GetIO();
-    // if (io.WantCaptureMouse || !sim) return;
+    ImGuiIO& io = ImGui::GetIO();
+    if (io.WantCaptureMouse || !sim) return;
 
-    // int mods = glutGetModifiers();
-    // // if (sim->isDragging  && sim->isPanEnabled) {
-    //     float dx = (x - sim->lastMouseX) / sim->zoom;
-    //     float dy = (y - sim->lastMouseY) / sim->zoom;
+    int mods = glutGetModifiers();
+    if (sim->isDragging  && sim->isPanEnabled) {
+        float dx = (x - sim->lastMouseX) / sim->zoom;
+        float dy = (y - sim->lastMouseY) / sim->zoom;
 
-    //     sim->panX += dx;
-    //     sim->panY += dy;
+        sim->panX += dx;
+        sim->panY += dy;
 
-    //     sim->lastMouseX = x;
-    //     sim->lastMouseY = y;
+        sim->lastMouseX = x;
+        sim->lastMouseY = y;
 
-    //     glutPostRedisplay();
-    // }
+        glutPostRedisplay();
+    }
 
     // if (sim->getToolMode() == DRAG) {
     //     float worldX = (x - sim->width / 2.0f) / sim->zoom - sim->panX;
@@ -234,7 +232,7 @@ void SimulationUI::render(CUDAHandler &sim)
     //     }
     // }
 
-    ////////////////////////////////////////////////////////////////////////////////////
+    // //////////////////////////////////////////////////////////////////////////////////
     // if (sim->getToolMode() == DISTURBE || sim->getToolMode() == TEAR || sim->getToolMode() == ACTIVE) {
     //     // ✅ Convert screen coordinates to world/sim space
     //     float worldX = (x - sim->width / 2.0f) / sim->zoom - sim->panX;
@@ -248,63 +246,63 @@ void SimulationUI::render(CUDAHandler &sim)
     // sim->lastMouseX = x; //worldX;
     // sim->lastMouseY = y; // worldY;
 
-// }
+}
 
-// void SimulationUI::mouseWheelCallback(int wheel, int direction, int x, int y)
-// {
-    // if (!CUDAHandler::instance) return;
-    // int mods = glutGetModifiers();  // activate zoom/via wheel mouse if ALT key is pressed
-    // if (mods & GLUT_ACTIVE_ALT) { 
-    //     // float zoomFactor = (direction > 0) ? 1.1f : 1.0f / 1.1f;
-    //     // CUDAHandler::instance->zoom *= zoomFactor;
-    //     // glutPostRedisplay();
-    // }
-// }
+void SimulationUI::mouseWheelCallback(int wheel, int direction, int x, int y)
+{
+    if (!CUDAHandler::instance) return;
+    int mods = glutGetModifiers();  // activate zoom/via wheel mouse if ALT key is pressed
+    if (mods & GLUT_ACTIVE_ALT) { 
+        float zoomFactor = (direction > 0) ? 1.1f : 1.0f / 1.1f;
+        CUDAHandler::instance->zoom *= zoomFactor;
+        glutPostRedisplay();
+    }
+}
 
-// void SimulationUI::handleMouseClick(int button, int state, int x, int y){
+void SimulationUI::handleMouseClick(int button, int state, int x, int y){
     
-    // ImGuiIO& io = ImGui::GetIO();
-    // if (io.WantCaptureMouse || !CUDAHandler::instance) return;
+    ImGuiIO& io = ImGui::GetIO();
+    if (io.WantCaptureMouse || !CUDAHandler::instance) return;
 
-    // CUDAHandler* sim = CUDAHandler::instance;
+    CUDAHandler* sim = CUDAHandler::instance;
     
 
-    // // ✅ Convert screen coordinates to world/sim space
-    // // float worldX = (x - sim->width / 2.0f) / sim->zoom - sim->panX;
-    // // float worldY = (y - sim->height / 2.0f) / sim->zoom - sim->panY;
-    // // Vec2 mousePos(worldX, worldY);
-    // if (button == GLUT_LEFT_BUTTON && state == GLUT_DOWN) {
+    // ✅ Convert screen coordinates to world/sim space
+    float worldX = (x - sim->width / 2.0f) / sim->zoom - sim->panX;
+    float worldY = (y - sim->height / 2.0f) / sim->zoom - sim->panY;
+    // vec2f mousePos(worldX, worldY);
+    if (button == GLUT_LEFT_BUTTON && state == GLUT_DOWN) {
 
-    //     int mods = glutGetModifiers();
-    //     if (mods & GLUT_ACTIVE_SHIFT) { // onnly activate dragging if SHIFT key is pressed
-    //         // sim->isDragging = true;
-    //         // sim->isPanEnabled = true;
-    //         // sim->lastMouseX = x;
-    //         // sim->lastMouseY = y;
+        int mods = glutGetModifiers();
+        if (mods & GLUT_ACTIVE_SHIFT) { // onnly activate dragging if SHIFT key is pressed
+            sim->isDragging = true;
+            sim->isPanEnabled = true;
+            sim->lastMouseX = x;
+            sim->lastMouseY = y;
 
-    //     }
-    //     // if (sim->getToolMode() == DRAG)
-    //     //     sim->applyPullToParticle(mousePos); // grab a particle
+        }
+        // if (sim->getToolMode() == DRAG)
+        //     sim->applyPullToParticle(mousePos); // grab a particle
         
        
-    //     // sim->lastMouseX = x; // This is used to update the circular mouse pointer 
-    //     // sim->lastMouseY = y; 
+        // sim->lastMouseX = x; // This is used to update the circular mouse pointer 
+        // sim->lastMouseY = y; 
 
-    //     // sim->leftMouseDown = true;
+        // sim->leftMouseDown = true;
 
         
-    // } else if (state == GLUT_UP) {
-    //     // sim->isDragging = false;
-    //     // sim->isPanEnabled = false;
-    //     // sim->leftMouseDown = false;
-    //     // sim->selectedParticle = nullptr;
-    //     // for (int i = 0; i < sim->selectedParticles.size(); ++i){
-    //     //     sim->particles[sim->selectedParticles[i]].color = sim->simulationParticlesColor;
-    //     // }
-    //     // sim->selectedParticles.clear();
-    //     // sim->setToolMode(DISTURBE); // default
+    } else if (state == GLUT_UP) {
+        sim->isDragging = false;
+        sim->isPanEnabled = false;
+        // sim->leftMouseDown = false;
+        // sim->selectedParticle = nullptr;
+        // for (int i = 0; i < sim->selectedParticles.size(); ++i){
+        //     sim->particles[sim->selectedParticles[i]].color = sim->simulationParticlesColor;
+        // }
+        // sim->selectedParticles.clear();
+        // sim->setToolMode(DISTURBE); // default
 
-    // }
+    }
 
     // if (button == GLUT_RIGHT_BUTTON && state == GLUT_DOWN) {
 
@@ -330,4 +328,4 @@ void SimulationUI::render(CUDAHandler &sim)
            
 
     // }
-// }
+}

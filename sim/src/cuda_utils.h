@@ -3,21 +3,6 @@
 #include <iostream>
 #include <cassert>
 
-
-#define checkCuda(ans) { gpuAssert((ans), #ans, __FILE__, __LINE__); }
-
-inline void gpuAssert(cudaError_t code, const char *expr, const char *file, int line, bool abort=true) {
-    if (code != cudaSuccess) {
-        fprintf(stderr,
-                "CUDA Error: %s (error code %d)\n"
-                "Expression: %s\n"
-                "File: %s\n"
-                "Line: %d\n",
-                cudaGetErrorString(code), code, expr, file, line);
-        if (abort) exit(code);
-    }
-}
-
 const uchar4 BLUE_PLANET    = make_uchar4(93, 176, 199,255);
 const uchar4 GRAY_ROCKY     = make_uchar4(183, 184, 185,255);
 const uchar4 SUN_YELLOW     = make_uchar4(253, 184, 19, 255);
@@ -33,3 +18,19 @@ const uchar4 URANUS_BLUE    = make_uchar4(46, 132, 206, 255);
 const uchar4 PLUTO_TAN      = make_uchar4(255, 241, 213, 255);
 const uchar4 LITE_GREY      = make_uchar4(211, 211, 211, 255);
 const uchar4 CHARCOAL_GREY  = make_uchar4(54, 69, 79, 255);
+
+
+#define checkCuda(ans) { gpuAssert((ans), #ans, __FILE__, __LINE__); }
+
+inline void gpuAssert(cudaError_t code, const char *expr, const char *file, int line, bool abort=true) {
+    if (code != cudaSuccess) {
+        fprintf(stderr,
+                "CUDA Error: %s (error code %d)\n"
+                "Expression: %s\n"
+                "File: %s\n"
+                "Line: %d\n",
+                cudaGetErrorString(code), code, expr, file, line);
+        if (abort) exit(code);
+    }
+}
+
