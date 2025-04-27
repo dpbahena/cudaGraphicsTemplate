@@ -252,7 +252,7 @@ void SimulationUI::mouseWheelCallback(int wheel, int direction, int x, int y)
 {
     if (!CUDAHandler::instance) return;
     int mods = glutGetModifiers();  // activate zoom/via wheel mouse if ALT key is pressed
-    if (mods & GLUT_ACTIVE_ALT) { 
+    if (mods & GLUT_ACTIVE_SHIFT) { 
         float zoomFactor = (direction > 0) ? 1.1f : 1.0f / 1.1f;
         CUDAHandler::instance->zoom *= zoomFactor;
         glutPostRedisplay();
