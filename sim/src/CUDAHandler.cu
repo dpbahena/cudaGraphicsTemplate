@@ -23,16 +23,12 @@ CUDAHandler::~CUDAHandler()
 void CUDAHandler::updateDraw(float dt)
 {
     this->dt = dt;
-
     
     cudaSurfaceObject_t surface = MapSurfaceResouse(); 
    
-    // clear graphics
-    int threads = 16; 
-    dim3 clearBlock(threads, threads);
-    dim3 clearGrid((width + clearBlock.x -1) / clearBlock.x, (height + clearBlock.y - 1) / clearBlock.y);
-    clearSurface_kernel<<<clearGrid, clearBlock>>>(surface, width, height, BLUE_PLANET);
+    clearGraphicsDisply(surface);
 
+    // draw samples to check ZOOM & PAN
     drawCircle_kernel<<<1, 1>>>(surface, width, height, center.x, center.y, 200, SUN_YELLOW, 1, 4, zoom, panX, panY);
     drawGlowingCircle<<<1, 1>>>(surface, width, height, center.x, center.y, 50, RED_MERCURY, 1.5f, zoom, panX, panY);
 
@@ -41,6 +37,16 @@ void CUDAHandler::updateDraw(float dt)
 
     cudaDestroySurfaceObject(surface);
     cudaGraphicsUnmapResources(1, &cudaResource);
+}
+
+
+
+void CUDAHandler::clearGraphicsDisply(cudaSurfaceObject_t &surface)
+{
+    int threads = 16; 
+    dim3 clearBlock(threads, threads);
+    dim3 clearGrid((width + clearBlock.x -1) / clearBlock.x, (height + clearBlock.y - 1) / clearBlock.y);
+    clearSurface_kernel<<<clearGrid, clearBlock>>>(surface, width, height, BLUE_PLANET);
 }
 
 cudaSurfaceObject_t CUDAHandler::MapSurfaceResouse()

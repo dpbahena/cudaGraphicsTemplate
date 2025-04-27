@@ -34,6 +34,7 @@ class CUDAHandler {
 
         // main functions
         void updateDraw(float dt);
+        void clearGraphicsDisply(cudaSurfaceObject_t &surface);
 
         // program variables
         float dt;  // delta time
