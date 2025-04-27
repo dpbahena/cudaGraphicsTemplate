@@ -59,5 +59,6 @@ class CUDAHandler {
     private:
         // GL resources
         cudaGraphicsResource_t cudaResource;
+        cudaSurfaceObject_t MapSurfaceResouse();
 
 };

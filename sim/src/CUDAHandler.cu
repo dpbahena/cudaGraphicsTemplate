@@ -23,21 +23,8 @@ void CUDAHandler::updateDraw(float dt)
     this->dt = dt;
 
     
-
-    //* Map the resource for CUDA
-    cudaArray_t array;
-    // glFinish();
-    cudaGraphicsMapResources(1, &cudaResource, 0);
-    cudaGraphicsSubResourceGetMappedArray(&array, cudaResource, 0, 0);
-
-    //* Create a CUDA surface object
-    cudaResourceDesc resDesc = {};
-    resDesc.resType = cudaResourceTypeArray;
-    resDesc.res.array.array = array;
-
-    cudaSurfaceObject_t surface = 0;
-    cudaCreateSurfaceObject(&surface, &resDesc);
-
+    cudaSurfaceObject_t surface = MapSurfaceResouse(); 
+   
     // clear graphics
     int threads = 16; 
     dim3 clearBlock(threads, threads);
@@ -54,3 +41,20 @@ void CUDAHandler::updateDraw(float dt)
     cudaGraphicsUnmapResources(1, &cudaResource);
 }
 
+cudaSurfaceObject_t CUDAHandler::MapSurfaceResouse()
+{
+    //* Map the resource for CUDA
+    cudaArray_t array;
+    // glFinish();
+    cudaGraphicsMapResources(1, &cudaResource, 0);
+    cudaGraphicsSubResourceGetMappedArray(&array, cudaResource, 0, 0);
+
+    //* Create a CUDA surface object
+    cudaResourceDesc resDesc = {};
+    resDesc.resType = cudaResourceTypeArray;
+    resDesc.res.array.array = array;
+
+    cudaSurfaceObject_t surface = 0;
+    cudaCreateSurfaceObject(&surface, &resDesc);
+    return surface;
+}
