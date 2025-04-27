@@ -23,7 +23,7 @@ __device__ void drawBlendedFilledCircle(cudaSurfaceObject_t surface, int cx, int
 // Kernels
 __global__ void clearSurface_kernel(cudaSurfaceObject_t surface, int width, int height, uchar4 color);
 __global__ void drawCircle_kernel(cudaSurfaceObject_t surface, int width, int height, int cx, int cy, int radius, uchar4 color, bool outline, int thickness );
-
+__global__ void drawGlowingCircle(cudaSurfaceObject_t surface, int width, int height, int cx, int cy, int radius, uchar4 color, float glowExtent);
 
 
 

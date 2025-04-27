@@ -26,7 +26,7 @@ void CUDAHandler::updateDraw(float dt)
 
     //* Map the resource for CUDA
     cudaArray_t array;
-    glFinish();
+    // glFinish();
     cudaGraphicsMapResources(1, &cudaResource, 0);
     cudaGraphicsSubResourceGetMappedArray(&array, cudaResource, 0, 0);
 
@@ -38,16 +38,6 @@ void CUDAHandler::updateDraw(float dt)
     cudaSurfaceObject_t surface = 0;
     cudaCreateSurfaceObject(&surface, &resDesc);
 
-    // cudaError_t err = cudaGraphicsMapResources(1, &cudaResource, 0);
-    // std::cout << "MapResources error: " << cudaGetErrorString(err) << std::endl;
-
-    // cudaError_t err = cudaGraphicsMapResources(1, &cudaResource, 0);
-    // if (err != cudaSuccess) {
-    //     std::cerr << "MapResources failed: " << cudaGetErrorString(err) << std::endl;
-    // }
-    // cudaGraphicsSubResourceGetMappedArray(&array, cudaResource, 0, 0);
-
-    // printf("Width: %d, Height: %d\n", width, height);
     // clear graphics
     int threads = 16; 
     dim3 clearBlock(threads, threads);
@@ -55,6 +45,8 @@ void CUDAHandler::updateDraw(float dt)
     clearSurface_kernel<<<clearGrid, clearBlock>>>(surface, width, height, BLUE_PLANET);
 
     drawCircle_kernel<<<1, 1>>>(surface, width, height, width/2, height/2, 200, SUN_YELLOW, 1, 4 );
+
+    drawGlowingCircle<<<1, 1>>>(surface, width, height, width / 2, height / 2, 50, RED_MERCURY, 1.5f);
     checkCuda(cudaPeekAtLastError());
     checkCuda(cudaDeviceSynchronize());
 

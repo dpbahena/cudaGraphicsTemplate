@@ -128,4 +128,40 @@ __global__ void drawCircle_kernel(cudaSurfaceObject_t surface, int width, int he
 }
 
 
+__global__ void drawGlowingCircle(cudaSurfaceObject_t surface, int width, int height, int cx, int cy, int radius, uchar4 color, float glowExtent) {
+
+    drawFilledCircle(surface, cx, cy, radius, color, width, height);
+
+    int rSquared = radius * radius;
+    float glowRadius = glowExtent * radius;
+    float glowRadiusSquared = glowRadius * glowRadius;
+
+    for (int dy = -glowRadius; dy <= glowRadius; ++dy) {
+        int y = cy + dy;
+        if (y < 0 || y >= height) continue;
+
+        for (int dx = -glowRadius; dx <= glowRadius; ++dx) {
+            int x = cx + dx;
+            if (x < 0 || x >= width) continue;
+
+            float distSquared = dx * dx + dy * dy;
+            
+            if (distSquared > rSquared && distSquared <= glowRadiusSquared) { // Only outside solid
+                float intensity = 1.0f - (sqrtf(distSquared) - radius) / (glowRadius - radius);
+                intensity = fmaxf(intensity, 0.0f);
+                intensity = fminf(intensity, 1.0f);
+
+                uchar4 outColor = make_uchar4(
+                    min(255, (int)(color.x * intensity)),
+                    min(255, (int)(color.y * intensity)),
+                    min(255, (int)(color.z * intensity)),
+                    color.w
+                );
+
+                drawPixel(surface, x, y, outColor, width, height);
+            }
+        }
+    }
+}
+ 
 
