@@ -38,6 +38,7 @@ class CUDAHandler {
         // program variables
         float dt;  // delta time
         int height, width;
+        vec2f center;
 
 
 
