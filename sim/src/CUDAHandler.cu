@@ -23,14 +23,15 @@ CUDAHandler::~CUDAHandler()
 void CUDAHandler::updateDraw(float dt)
 {
     this->dt = dt;
-    
+
     cudaSurfaceObject_t surface = MapSurfaceResouse(); 
    
     clearGraphicsDisply(surface);
 
     // draw samples to check ZOOM & PAN
+    
     drawCircle_kernel<<<1, 1>>>(surface, width, height, center.x, center.y, 200, SUN_YELLOW, 1, 4, zoom, panX, panY);
-    drawGlowingCircle<<<1, 1>>>(surface, width, height, center.x, center.y, 50, RED_MERCURY, 1.5f, zoom, panX, panY);
+    // drawGlowingCircle<<<1, 1>>>(surface, width, height, center.x, center.y, 50, RED_MERCURY, 1.5f, zoom, panX, panY);
 
     checkCuda(cudaPeekAtLastError());
     checkCuda(cudaDeviceSynchronize());
