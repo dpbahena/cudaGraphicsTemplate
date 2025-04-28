@@ -53,6 +53,10 @@ class CUDAHandler {
         bool isPanEnabled = false;
 
 
+        // Draw shapes
+        void drawGlowingCircle(cudaSurfaceObject_t &surface, vec2f position, float radius, float glowExtend, uchar4 color);
+
+
         
 
 

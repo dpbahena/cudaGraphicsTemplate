@@ -30,8 +30,10 @@ void CUDAHandler::updateDraw(float dt)
 
     // draw samples to check ZOOM & PAN
     
-    drawCircle_kernel<<<1, 1>>>(surface, width, height, center.x, center.y, 200, SUN_YELLOW, 1, 4, zoom, panX, panY);
-    // drawGlowingCircle<<<1, 1>>>(surface, width, height, center.x, center.y, 50, RED_MERCURY, 1.5f, zoom, panX, panY);
+    // drawCircle_kernel<<<1, 1>>>(surface, width, height, center.x, center.y, 200, SUN_YELLOW, 1, 4, zoom, panX, panY);
+    // drawGlowingCircle_kernel<<<1, 1>>>(surface, width, height, center.x, center.y, 500, RED_MERCURY, 1.5f, zoom, panX, panY);
+    
+    drawGlowingCircle(surface, center, 500, 1.5, RED_MERCURY );
 
     checkCuda(cudaPeekAtLastError());
     checkCuda(cudaDeviceSynchronize());
@@ -48,6 +50,23 @@ void CUDAHandler::clearGraphicsDisply(cudaSurfaceObject_t &surface)
     dim3 clearBlock(threads, threads);
     dim3 clearGrid((width + clearBlock.x -1) / clearBlock.x, (height + clearBlock.y - 1) / clearBlock.y);
     clearSurface_kernel<<<clearGrid, clearBlock>>>(surface, width, height, BLUE_PLANET);
+}
+
+void CUDAHandler::drawGlowingCircle(cudaSurfaceObject_t &surface, vec2f position, float radius, float glowExtend, uchar4 color)
+{
+    // Calculate bounding box
+    float glowRadius = glowExtend * radius;
+    int xMin = max(0, (int)(position.x - glowRadius));
+    int xMax = min(width - 1, (int)(position.x + glowRadius));
+    int yMin = max(0, (int)(position.y - glowRadius));
+    int yMax = min(height - 1, (int)(position.y + glowRadius));
+
+    int drawWidth   = xMax - xMin + 1;
+    int drawHeight  = yMax - yMin + 1;
+
+    dim3 blockSize(16, 16);
+    dim3 gridSize ((drawWidth + blockSize.x - 1) / blockSize.x, (drawHeight + blockSize.y -1) / blockSize.y);
+    drawGlowingCircle_kernel<<<gridSize, blockSize>>>(surface, width, height, position.x, position.y, radius,  RED_MERCURY, 1.5f, xMin, yMin, zoom, panX, panY);
 }
 
 cudaSurfaceObject_t CUDAHandler::MapSurfaceResouse()

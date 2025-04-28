@@ -133,7 +133,7 @@ __global__ void drawCircle_kernel(cudaSurfaceObject_t surface, int width, int he
 }
 
 
-__global__ void drawGlowingCircle(cudaSurfaceObject_t surface, int width, int height, int cx, int cy, int radius, uchar4 color, float glowExtent, float zoom, float panX, float panY) {
+__global__ void drawGlowingCircle_kernel(cudaSurfaceObject_t surface, int width, int height, int cx, int cy, int radius, uchar4 color, float glowExtent, float zoom, float panX, float panY) {
 
     cx = (int) (cx + panX) * zoom + width / 2.0f;
     cy = (int) (cy + panY) * zoom + height/ 2.0f;
@@ -167,10 +167,67 @@ __global__ void drawGlowingCircle(cudaSurfaceObject_t surface, int width, int he
                     color.w
                 );
 
-                drawPixel(surface, x, y, outColor, width, height);
+                // --- Blending with background ---
+                uchar4 oldColor;
+                surf2Dread(&oldColor, surface, x * sizeof(uchar4), y);
+
+                uchar4 blendedColor = make_uchar4(
+                    min(255, oldColor.x + outColor.x),
+                    min(255, oldColor.y + outColor.y),
+                    min(255, oldColor.z + outColor.z),
+                    min(255, oldColor.w + outColor.w)
+                );
+
+
+                drawPixel(surface, x, y, blendedColor, width, height);
             }
         }
     }
 }
- 
 
+__global__ void drawGlowingCircle_kernel(cudaSurfaceObject_t surface, int width, int height, int cx, int cy, int radius, uchar4 color, float glowExtent, float xMin, float yMin, float zoom, float panX, float panY)
+{
+    int local_x = threadIdx.x + blockIdx.x * blockDim.x;
+    int local_y = threadIdx.y + blockIdx.y * blockDim.y;
+
+    int x = xMin + local_x;
+    int y = yMin + local_y;
+    if (x >= width || y >= height) return;
+
+    int dx = x - cx;
+    int dy = y - cy;
+    
+    float distSquared = dx * dx + dy * dy;
+    int rSquared = radius * radius;
+    float glowRadius = glowExtent * radius;
+    float glowRadiusSquared = glowRadius * glowRadius;
+
+    if (distSquared <= glowRadiusSquared) {
+        float intensity = 1.0f;
+        if (distSquared > rSquared) {
+            intensity = 1.0f - (sqrtf(distSquared) - radius) / (glowRadius - radius);
+        }
+        /*  We clamp to avoid accidental negatives or >1.0 intensities, to ensure physically correct, safe, and beautiful glow rendering.*/
+        intensity = fmax(intensity, 0.0f);
+        intensity = fmin(intensity, 1.0f);
+        uchar4 newColor = make_uchar4(
+            min(255, (int)(color.x * intensity)),
+            min(255, (int)(color.y * intensity)),
+            min(255, (int)(color.z * intensity)),
+            (unsigned char)(color.w * intensity)
+        );
+
+        // --- Blending with background ---
+        uchar4 oldColor;
+        surf2Dread(&oldColor, surface, x * sizeof(uchar4), y);
+
+        uchar4 blendedColor = make_uchar4(
+            min(255,oldColor.x + newColor.x),
+            min(255,oldColor.y + newColor.y),
+            min(255,oldColor.z + newColor.z),
+            min(255,oldColor.w + newColor.w)
+        );
+        surf2Dwrite(blendedColor, surface, x * sizeof(uchar4), y);
+
+    }
+}
