@@ -192,42 +192,77 @@ __global__ void drawGlowingCircle_kernel(cudaSurfaceObject_t surface, int width,
 
     int x = xMin + local_x;
     int y = yMin + local_y;
+
+
     if (x >= width || y >= height) return;
 
-    int dx = x - cx;
-    int dy = y - cy;
+    // Convert screen pixel (x,y) to world space
+    float worldX = (x - width * 0.5f) / zoom - panX;
+    float worldY = (y - height * 0.5f) / zoom - panY;
+    radius *= zoom;
+
+    float dx = worldX - cx;
+    float dy = worldY - cy;
+
     
     float distSquared = dx * dx + dy * dy;
     int rSquared = radius * radius;
     float glowRadius = glowExtent * radius;
-    float glowRadiusSquared = glowRadius * glowRadius;
+    // float glowRadiusSquared = glowRadius * glowRadius;
+    float falloffPower = 2.f;
+
+    // Instead of sqrt(distSquared), compare distSquared directly (faster than fsqrt)
+    float glowRadiusSquared = (glowExtent * radius) * (glowExtent * radius);
 
     if (distSquared <= glowRadiusSquared) {
-        float intensity = 1.0f;
-        if (distSquared > rSquared) {
-            intensity = 1.0f - (sqrtf(distSquared) - radius) / (glowRadius - radius);
-        }
-        /*  We clamp to avoid accidental negatives or >1.0 intensities, to ensure physically correct, safe, and beautiful glow rendering.*/
-        intensity = fmax(intensity, 0.0f);
-        intensity = fmin(intensity, 1.0f);
+        float normalizedSquared = distSquared / glowRadiusSquared;
+        // * Option 1 - Linear distance fade
+        // float intensity = 1.0f - normalizedSquared; 
+
+        // * Option 2 - quadratic distance fade (optional softer/harder)
+
+        /** falloffPower = 1.0f → normal fade
+            falloffPower = 2.0f → steeper fade  (fast fade)
+            falloffPower = 0.5f → softer fade 
+        */
+        float intensity = powf(1.0f - normalizedSquared, falloffPower);
+    
+        intensity = fmaxf(intensity, 0.0f);
+        intensity = fminf(intensity, 1.0f);
+    
         uchar4 newColor = make_uchar4(
             min(255, (int)(color.x * intensity)),
             min(255, (int)(color.y * intensity)),
             min(255, (int)(color.z * intensity)),
             (unsigned char)(color.w * intensity)
         );
-
-        // --- Blending with background ---
+    
         uchar4 oldColor;
         surf2Dread(&oldColor, surface, x * sizeof(uchar4), y);
-
+    
         uchar4 blendedColor = make_uchar4(
-            min(255,oldColor.x + newColor.x),
-            min(255,oldColor.y + newColor.y),
-            min(255,oldColor.z + newColor.z),
-            min(255,oldColor.w + newColor.w)
+            min(255, oldColor.x + newColor.x),
+            min(255, oldColor.y + newColor.y),
+            min(255, oldColor.z + newColor.z),
+            min(255, oldColor.w + newColor.w)
         );
-        surf2Dwrite(blendedColor, surface, x * sizeof(uchar4), y);
 
+        
+        // Fade color toward background with slight blending
+        // float blendFactor = 0.5f; // between 0 (overwrite) and 1 (fully additive)
+
+        // uchar4 oldColor;
+        // surf2Dread(&oldColor, surface, x * sizeof(uchar4), y);
+
+        // uchar4 blendedColor = make_uchar4(
+        //     min(255, (unsigned char)(oldColor.x * (1.0f - blendFactor) + newColor.x * blendFactor)),
+        //     min(255, (unsigned char)(oldColor.y * (1.0f - blendFactor) + newColor.y * blendFactor)),
+        //     min(255, (unsigned char)(oldColor.z * (1.0f - blendFactor) + newColor.z * blendFactor)),
+        //     min(255, (unsigned char)(oldColor.w * (1.0f - blendFactor) + newColor.w * blendFactor))
+        // );
+    
+        surf2Dwrite(blendedColor, surface, x * sizeof(uchar4), y);
+        // surf2Dwrite(newColor, surface, x * sizeof(uchar4), y);
     }
+    
 }

@@ -26,11 +26,11 @@ void CUDAHandler::updateDraw(float dt)
 
     cudaSurfaceObject_t surface = MapSurfaceResouse(); 
    
-    clearGraphicsDisply(surface);
+    clearGraphicsDisply(surface, NEPTUNE_PURPLE);
 
     // draw samples to check ZOOM & PAN
     
-    // drawCircle_kernel<<<1, 1>>>(surface, width, height, center.x, center.y, 200, SUN_YELLOW, 1, 4, zoom, panX, panY);
+    drawCircle_kernel<<<1, 1>>>(surface, width, height, center.x, center.y, 200, SUN_YELLOW, 1, 4, zoom, panX, panY);
     // drawGlowingCircle_kernel<<<1, 1>>>(surface, width, height, center.x, center.y, 500, RED_MERCURY, 1.5f, zoom, panX, panY);
     
     drawGlowingCircle(surface, center, 500, 1.5, RED_MERCURY );
@@ -44,29 +44,44 @@ void CUDAHandler::updateDraw(float dt)
 
 
 
-void CUDAHandler::clearGraphicsDisply(cudaSurfaceObject_t &surface)
+void CUDAHandler::clearGraphicsDisply(cudaSurfaceObject_t &surface, uchar4 color)
 {
     int threads = 16; 
     dim3 clearBlock(threads, threads);
     dim3 clearGrid((width + clearBlock.x -1) / clearBlock.x, (height + clearBlock.y - 1) / clearBlock.y);
-    clearSurface_kernel<<<clearGrid, clearBlock>>>(surface, width, height, BLUE_PLANET);
+    clearSurface_kernel<<<clearGrid, clearBlock>>>(surface, width, height, color);
 }
 
-void CUDAHandler::drawGlowingCircle(cudaSurfaceObject_t &surface, vec2f position, float radius, float glowExtend, uchar4 color)
+void CUDAHandler::drawGlowingCircle(cudaSurfaceObject_t &surface, vec2f position, float radius, float glowExtent, uchar4 color)
 {
-    // Calculate bounding box
-    float glowRadius = glowExtend * radius;
-    int xMin = max(0, (int)(position.x - glowRadius));
-    int xMax = min(width - 1, (int)(position.x + glowRadius));
-    int yMin = max(0, (int)(position.y - glowRadius));
-    int yMax = min(height - 1, (int)(position.y + glowRadius));
+    // Map world center to screen center
+    float screen_cx = (position.x + panX) * zoom + width / 2.0f;
+    float screen_cy = (position.y + panY) * zoom + height / 2.0f;
 
-    int drawWidth   = xMax - xMin + 1;
-    int drawHeight  = yMax - yMin + 1;
+    // Calculate radius in screen pixels
+    float screen_radius = radius * zoom;
+    float screen_glowRadius = glowExtent * screen_radius;
+
+    int xmin = max(0, (int)(screen_cx - screen_glowRadius));
+    int xmax = min(width-1, (int)(screen_cx + screen_glowRadius));
+    int ymin = max(0, (int)(screen_cy - screen_glowRadius));
+    int ymax = min(height-1, (int)(screen_cy + screen_glowRadius));
+
+
+    
+    // // Calculate bounding box   // if not zoom , nor panx, nor pany involved
+    // float glowRadius = glowExtent * radius;
+    // int xMin = max(0, (int)(position.x - glowRadius));
+    // int xMax = min(width - 1, (int)(position.x + glowRadius));
+    // int yMin = max(0, (int)(position.y - glowRadius));
+    // int yMax = min(height - 1, (int)(position.y + glowRadius));
+
+    int drawWidth   = xmax - xmin + 1;
+    int drawHeight  = ymax - ymin + 1;
 
     dim3 blockSize(16, 16);
     dim3 gridSize ((drawWidth + blockSize.x - 1) / blockSize.x, (drawHeight + blockSize.y -1) / blockSize.y);
-    drawGlowingCircle_kernel<<<gridSize, blockSize>>>(surface, width, height, position.x, position.y, radius,  RED_MERCURY, 1.5f, xMin, yMin, zoom, panX, panY);
+    drawGlowingCircle_kernel<<<gridSize, blockSize>>>(surface, width, height, position.x, position.y, radius,  RED_MERCURY, 1.5f, xmin, ymin, zoom, panX, panY);
 }
 
 cudaSurfaceObject_t CUDAHandler::MapSurfaceResouse()

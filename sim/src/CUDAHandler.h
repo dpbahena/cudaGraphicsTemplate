@@ -34,7 +34,7 @@ class CUDAHandler {
 
         // main functions
         void updateDraw(float dt);
-        void clearGraphicsDisply(cudaSurfaceObject_t &surface);
+        void clearGraphicsDisply(cudaSurfaceObject_t &surface, uchar4 color);
 
         // program variables
         float dt;  // delta time
@@ -54,7 +54,7 @@ class CUDAHandler {
 
 
         // Draw shapes
-        void drawGlowingCircle(cudaSurfaceObject_t &surface, vec2f position, float radius, float glowExtend, uchar4 color);
+        void drawGlowingCircle(cudaSurfaceObject_t &surface, vec2f position, float radius, float glowExtent, uchar4 color);
 
 
         
