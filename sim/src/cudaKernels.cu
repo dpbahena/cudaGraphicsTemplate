@@ -199,15 +199,15 @@ __global__ void drawGlowingCircle_kernel(cudaSurfaceObject_t surface, int width,
     // Convert screen pixel (x,y) to world space
     float worldX = (x - width * 0.5f) / zoom - panX;
     float worldY = (y - height * 0.5f) / zoom - panY;
-    radius *= zoom;
+    
 
     float dx = worldX - cx;
     float dy = worldY - cy;
 
     
     float distSquared = dx * dx + dy * dy;
-    int rSquared = radius * radius;
-    float glowRadius = glowExtent * radius;
+    // int rSquared = radius * radius;
+    // float glowRadius = glowExtent * radius;
     // float glowRadiusSquared = glowRadius * glowRadius;
     float falloffPower = 2.f;
 
@@ -266,3 +266,107 @@ __global__ void drawGlowingCircle_kernel(cudaSurfaceObject_t surface, int width,
     }
     
 }
+
+
+__global__ void drawRing_kernel(cudaSurfaceObject_t surface, int width, int height, float centerX_world, float centerY_world, float radius, uchar4 color, float thickness, int xMin, int yMin, float zoom, float panX, float panY) 
+{
+    int local_x = threadIdx.x + blockIdx.x * blockDim.x;
+    int local_y = threadIdx.y + blockIdx.y * blockDim.y;
+
+    int x = xMin + local_x;
+    int y = yMin + local_y;
+
+
+    if (x >= width || y >= height) return;
+
+    // Convert screen pixel (x,y) to world space coordinates
+    float worldX = (x - width * 0.5f) / zoom - panX;
+    float worldY = (y - height * 0.5f) / zoom - panY;
+    // radius *= zoom;
+
+    float dx = worldX - centerX_world;
+    float dy = worldY - centerY_world;
+    
+    float dist = sqrtf(dx * dx + dy * dy);
+
+    // Draw pixel if it falls within the ring (distance ± thickness)
+    if (fabsf(dist - radius) < thickness) {
+        surf2Dwrite(color, surface, x * sizeof(uchar4), y);
+    }
+
+
+}
+
+/**
+ * -- SHARED MEMORY -- in this case can reduce redundant calculations, especially if multiple pixels reuse the same values like zoom, panX, panY, or even values like centerX_world and centerY_world.
+    But since shared memory is per block, the biggest gain would come from:
+    Avoiding redundant math inside each block
+    Optionally using it to cache small constant values shared across threads
+
+    * Use shared memory to cache:
+
+    centerX_world
+    centerY_world
+    radius
+    thickness
+    zoom, panX, panY
+    These are constant across the whole block.
+ */
+
+
+ __global__ void drawRing_sharedMemory_kernel(cudaSurfaceObject_t surface,
+    int width, int height,
+    float centerX_world, float centerY_world, float radius,
+    uchar4 color, float thickness,
+    int xMin, int yMin,
+    float zoom, float panX, float panY) {
+
+        // Declare shared memory (one copy per block)
+        __shared__ float s_centerX_world;
+        __shared__ float s_centerY_world;
+        __shared__ float s_radius;
+        __shared__ float s_thickness;
+        __shared__ float s_zoom;
+        __shared__ float s_panX;
+        __shared__ float s_panY;
+
+        // Initialized shared memory by the first thread in the block
+        if (threadIdx.x == 0 and threadIdx.y == 0) {
+            s_centerX_world = centerX_world;
+            s_centerY_world = centerY_world;
+            s_radius = radius;
+            s_thickness = thickness;
+            s_zoom = zoom;
+            s_panX = panX;
+            s_panY = panY;
+        }
+        // Wait until all threads in the block to finish loading shared memory
+        __syncthreads();
+
+        int local_x = threadIdx.x + blockIdx.x * blockDim.x;
+        int local_y = threadIdx.y + blockIdx.y * blockDim.y;
+
+        int x = xMin + local_x;
+        int y = yMin + local_y;
+
+
+        if (x >= width || y >= height) return;
+
+        // Convert screen pixel (x,y) to world space coordinates
+        float worldX = (x - width * 0.5f) / s_zoom - s_panX;
+        float worldY = (y - height * 0.5f) / s_zoom - s_panY;
+        
+        // Compute distance from current pixel to world center
+        float dx = worldX - s_centerX_world;
+        float dy = worldY - s_centerY_world;
+        float dist = sqrtf(dx * dx + dy * dy);
+
+
+        // Draw pixel if it falls within the ring (distance ± thickness)
+        if (fabsf(dist - s_radius) < s_thickness) {
+            surf2Dwrite(color, surface, x * sizeof(uchar4), y);
+        }
+
+
+
+    }

@@ -55,6 +55,7 @@ class CUDAHandler {
 
         // Draw shapes
         void drawGlowingCircle(cudaSurfaceObject_t &surface, vec2f position, float radius, float glowExtent, uchar4 color);
+        void drawRing(cudaSurfaceObject_t &surface, vec2f position, float radius, float thickness, uchar4 color);
 
 
         
