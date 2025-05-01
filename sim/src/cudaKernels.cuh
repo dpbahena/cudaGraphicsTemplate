@@ -37,3 +37,5 @@ __global__ void drawRing_sharedMemory_kernel(cudaSurfaceObject_t surface,
 
 
 
+
+

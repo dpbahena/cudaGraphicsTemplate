@@ -29,7 +29,6 @@ struct GameLife{
     bool alive;
     bool next;
     int aliveNeighbors;
-    float distance;
     uchar4 color;
 };
 
@@ -72,10 +71,11 @@ class CUDAHandler {
         // Game of Life
         int gridRows, gridCols;
         std::vector<GameLife> gamelife;
-        int numberofParticles = 500000;
+        int numberOfParticles = 500000;
         float particleRadius = 1;
         float restLength = 2;
         void activateGameLife();
+        void activateGameLife(GameLife* &d_gameLife);
         void initGameLife();
         void setGroupOfParticles(int totalParticles, float top, int2 ratio, bool anchors = 0);
         int2 calculateGrid(int n, int a, int b);

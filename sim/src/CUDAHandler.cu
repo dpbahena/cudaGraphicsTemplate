@@ -14,6 +14,46 @@ __global__ void drawParticles_kernel(cudaSurfaceObject_t surface, GameLife* part
     drawFilledCircle(surface, x0, y0, radius, gl.color, width, height);
 }
 
+__global__ void commitNextState_kernel(GameLife* gamelife, int totalParticles) {
+    int i = threadIdx.x + blockIdx.x * blockDim.x;
+    if (i >= totalParticles) return;
+
+    gamelife[i].alive = gamelife[i].next;
+    gamelife[i].next = false;
+}
+
+__global__ void activate_gameOfLife_kernel(GameLife* gamelife, int totalParticles, int gridRows, int gridCols) {
+    int i = threadIdx.x + blockIdx.x * blockDim.x;
+    if (i >= totalParticles) return;
+  
+    int row = i / gridCols;
+    int col = i % gridCols;
+    int aliveCount = 0;
+    
+    for (int dr = -1; dr <= 1; ++dr) {
+        for (int dc = -1; dc <= 1; ++dc) {
+            if (dr == 0 && dc == 0) continue; // skip self
+
+            int nr = row + dr;
+            int nc = col + dc;
+            // * Check if neighbors are within the grid bounds
+            if (nr >= 0 && nr < gridRows && nc >= 0 && nc < gridCols) {
+                int j = nr * gridCols + nc;
+                // * Check if neighbors are alive and count them
+                if (gamelife[j].alive) aliveCount++;
+            }
+        }
+    }
+    
+    // Apply rules
+    if (gamelife[i].alive )
+        gamelife[i].next = (aliveCount == 2 || aliveCount == 3); // stays alive or not
+    else
+        gamelife[i].next = (aliveCount == 3);
+}
+
+
+
 
 CUDAHandler* CUDAHandler::instance = nullptr;
 
@@ -39,8 +79,16 @@ void CUDAHandler::updateDraw(float dt)
     if (gamelife.empty()) {
         initGameLife();
     } 
-    activateGameLife();
-    if (framesCount % 50 == 0) gamelife[random_int(0, numberofParticles)].alive = true;
+    
+
+    GameLife* d_gameLife;
+    checkCuda(cudaMalloc(&d_gameLife, gamelife.size() * sizeof(GameLife)));
+    checkCuda(cudaMemcpy(d_gameLife, gamelife.data(), gamelife.size() * sizeof(GameLife), cudaMemcpyHostToDevice));
+    
+    
+    activateGameLife(d_gameLife);
+    checkCuda(cudaMemcpy(gamelife.data(), d_gameLife, gamelife.size() * sizeof(GameLife), cudaMemcpyDeviceToHost));
+    
 
     cudaSurfaceObject_t surface = MapSurfaceResouse(); 
    
@@ -54,9 +102,7 @@ void CUDAHandler::updateDraw(float dt)
 
     // drawGlowingCircle(surface, center, 500, 1.5, RED_MERCURY );
 
-    GameLife* d_gameLife;
-    checkCuda(cudaMalloc(&d_gameLife, gamelife.size() * sizeof(GameLife)));
-    checkCuda(cudaMemcpy(d_gameLife, gamelife.data(), gamelife.size() * sizeof(GameLife), cudaMemcpyHostToDevice));
+    
 
     drawGameLife(surface, d_gameLife);
 
@@ -166,29 +212,38 @@ void CUDAHandler::activateGameLife()
                     int j = nr * gridCols + nc;
                     // 4. check if the neighbors are alive
                     if (gamelife[j].alive) aliveCount++;
-                    
-                    
                 }
-                gamelife[i].aliveNeighbors = aliveCount;
-          
             }
-        }  
+        }
+        gamelife[i].aliveNeighbors = aliveCount;  
     }
+    
+
 
     for (auto &gl : gamelife) {
-        if (!gl.alive && gl.aliveNeighbors == 3) gl.next = true;  // reproduction
-        if (gl.alive && gl.aliveNeighbors < 2)   gl.next = false; // underpopulation
-        if (gl.alive && gl.aliveNeighbors > 3)   gl.next = false;  // overpopulation
-        if (gl.alive && (gl.aliveNeighbors == 2 || gl.aliveNeighbors == 3)) gl.next = true;
+        if (!gl.alive && gl.aliveNeighbors == 3) gl.next = true;  // revives : reproduction
+        if (gl.alive && gl.aliveNeighbors < 2)   gl.next = false; // dies : underpopulation
+        if (gl.alive && gl.aliveNeighbors > 3)   gl.next = false;  // dies : overpopulation
+        if (gl.alive && (gl.aliveNeighbors == 2 || gl.aliveNeighbors == 3)) gl.next = true;  // stays alive
 
     }
+}
+
+void CUDAHandler::activateGameLife(GameLife* &d_gameLife)
+{
+
+    int threads = 128;
+    int blocks = (numberOfParticles + threads - 1) / threads;
+    commitNextState_kernel<<<blocks, threads>>> (d_gameLife, gamelife.size());
+    checkCuda(cudaDeviceSynchronize());
+    activate_gameOfLife_kernel<<<blocks, threads>>>(d_gameLife, gamelife.size(), gridRows, gridCols);
 }
 
 void CUDAHandler::initGameLife()
 {
     
     int top = 1;
-    setGroupOfParticles(numberofParticles, top, {16, 9});
+    setGroupOfParticles(numberOfParticles, top, {16, 9});
 
 }
 
@@ -242,7 +297,6 @@ void CUDAHandler::setGroupOfParticles(int totalParticles, float top, int2 ratio,
             float y = topLeft.y + r * restLength;
             GameLife gl;
             gl.position = vec2f(x,y);
-            gl.distance = restLength;
             gl.radius = particleRadius;
             gl.alive = gl.next = randomBool();
             // if (c == 2 && ( r == 1 || r == 2 || r == 3)) gl.next = true;
