@@ -22,6 +22,17 @@ typedef nv::vec2<int> vec2i;
 typedef nv::vec3<int> vec3i;
 typedef nv::vec4<int> vec4i;
 
+struct GameLife{
+
+    vec2f position;
+    int radius;
+    bool alive;
+    bool next;
+    int aliveNeighbors;
+    float distance;
+    uchar4 color;
+};
+
 
 class CUDAHandler {
 
@@ -40,6 +51,7 @@ class CUDAHandler {
         float dt;  // delta time
         int height, width;
         vec2f center;
+        int framesCount{};
 
 
 
@@ -56,7 +68,18 @@ class CUDAHandler {
         // Draw shapes
         void drawGlowingCircle(cudaSurfaceObject_t &surface, vec2f position, float radius, float glowExtent, uchar4 color);
         void drawRing(cudaSurfaceObject_t &surface, vec2f position, float radius, float thickness, uchar4 color);
-
+        
+        // Game of Life
+        int gridRows, gridCols;
+        std::vector<GameLife> gamelife;
+        int numberofParticles = 500000;
+        float particleRadius = 1;
+        float restLength = 2;
+        void activateGameLife();
+        void initGameLife();
+        void setGroupOfParticles(int totalParticles, float top, int2 ratio, bool anchors = 0);
+        int2 calculateGrid(int n, int a, int b);
+        void drawGameLife(cudaSurfaceObject_t &surface, GameLife* &d_gameLife);
 
         
 

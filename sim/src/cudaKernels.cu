@@ -116,7 +116,6 @@ __global__ void clearSurface_kernel(cudaSurfaceObject_t surface, int width, int 
 
 
 
-
 __global__ void drawCircle_kernel(cudaSurfaceObject_t surface, int width, int height, int cx, int cy, int radius, uchar4 color, bool outline, int thickness, float zoom, float panX, float panY)
 {
     cx = (int) (cx + panX) * zoom + width / 2.0f;

@@ -2,6 +2,7 @@
 #include <cuda_runtime.h>
 #include <iostream>
 #include <cassert>
+#include <random>
 
 const uchar4 BLUE_PLANET    = make_uchar4(93, 176, 199,255);
 const uchar4 GRAY_ROCKY     = make_uchar4(183, 184, 185,255);
@@ -34,3 +35,20 @@ inline void gpuAssert(cudaError_t code, const char *expr, const char *file, int 
     }
 }
 
+
+
+// __device__ __host__
+inline bool randomBool() {
+    std::random_device rd;
+    std::mt19937 gen(rd()); // Mersenne Twister RNG
+    std::bernoulli_distribution dist(0.5); // 50% chance for true or false
+
+    return dist(gen);
+}
+
+// Random int in [min, max] (inclusive)
+inline int random_int(int min, int max) {
+    static thread_local std::mt19937 generator(static_cast<unsigned int>(time(nullptr)));
+    std::uniform_int_distribution<int> distribution(min, max);
+    return distribution(generator);
+}
