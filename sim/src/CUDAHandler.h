@@ -2,7 +2,7 @@
 
 
 
-#include "nvVector.h"
+#include "VecGrapper.h"
 #include <GL/glut.h>
 #include "imgui.h"
 #include "imgui_impl_glut.h"
@@ -14,17 +14,18 @@
 
 
 // Shortcuts for nv::vec types
-typedef nv::vec2<float> vec2f;
-typedef nv::vec3<float> vec3f;
-typedef nv::vec4<float> vec4f;
+// typedef nv::vec2<float> vec2f;
+// typedef Vec2Wrapper vec2f;
+// typedef nv::vec3<float> vec3f;
+// typedef nv::vec4<float> vec4f;
 
-typedef nv::vec2<int> vec2i;
-typedef nv::vec3<int> vec3i;
-typedef nv::vec4<int> vec4i;
+// typedef nv::vec2<int> vec2i;
+// typedef nv::vec3<int> vec3i;
+// typedef nv::vec4<int> vec4i;
 
 struct GameLife{
 
-    vec2f position;
+    vec2 position;
     int radius;
     bool alive;
     bool next;
@@ -32,6 +33,12 @@ struct GameLife{
     uchar4 color;
 };
 
+enum ToolMode {
+    DISTURBE = 0,
+    DRAG = 1,
+    TEAR = 2,
+    ACTIVE = 3
+};
 
 class CUDAHandler {
 
@@ -49,26 +56,32 @@ class CUDAHandler {
         // program variables
         float dt;  // delta time
         int height, width;
-        vec2f center;
+        vec2 center;
         int framesCount{};
+        
 
 
 
-        // zoom & pan variables
+        // mouse operations
         float zoom = 1.0f;
         float panX = -width / 2.0f, panY = -height / 2.0f;
         int lastMouseX, lastMouseY;
-        vec2f lastMousePos = vec2f(0.0f);
+        vec2 lastMousePos = vec2(0.0f, 0.0f);
         bool isDragging = false;
         bool leftMouseDown = false;
         bool isPanEnabled = false;
+        float mouseCursorRadius = 50.0f;
+        ToolMode toolMode = DISTURBE;
 
 
         // Draw shapes
-        void drawGlowingCircle(cudaSurfaceObject_t &surface, vec2f position, float radius, float glowExtent, uchar4 color);
-        void drawRing(cudaSurfaceObject_t &surface, vec2f position, float radius, float thickness, uchar4 color);
+        void drawGlowingCircle(cudaSurfaceObject_t &surface, vec2 position, float radius, float glowExtent, uchar4 color);
+        void drawRing(cudaSurfaceObject_t &surface, vec2 position, float radius, float thickness, uchar4 color);
         
         // Game of Life
+        bool startSimulation = false;
+        int option = 3;
+        GameLife* d_gameLife; // for GPU operations
         int gridRows, gridCols;
         std::vector<GameLife> gamelife;
         int numberOfParticles = 500000;
@@ -80,6 +93,7 @@ class CUDAHandler {
         void setGroupOfParticles(int totalParticles, float top, int2 ratio, bool anchors = 0);
         int2 calculateGrid(int n, int a, int b);
         void drawGameLife(cudaSurfaceObject_t &surface, GameLife* &d_gameLife);
+        void disturbeGameLife(vec2 mousePosition);
 
         
 

@@ -370,4 +370,6 @@ __global__ void drawRing_kernel(cudaSurfaceObject_t surface, int width, int heig
 
     }
 
+    
+
 

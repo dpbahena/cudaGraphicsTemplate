@@ -2,11 +2,36 @@
 #include "cudaKernels.cuh"
 #include "cuda_utils.h"
 
+__global__ void disturbeGameLife_kernel(GameLife* gameLife, float mousePosX, float mousePosY, int numberOfCells, float mouseRadius)
+{
+    int i = threadIdx.x + blockIdx.x * blockDim.x;
+    if (i >= numberOfCells) return;
+    
+    
+    __shared__ float s_mousePosX;
+    __shared__ float s_mousePosY;
+    __shared__ float s_mouseRadius;
+   
+    
+
+    if (threadIdx.x == 0) {
+        s_mousePosX = mousePosX;
+        s_mousePosY = mousePosY;
+        s_mouseRadius = mouseRadius;
+        
+    }
+    __syncthreads();
+    vec2 pos(s_mousePosX, s_mousePosY);
+    float dist = (gameLife[i].position - pos).magSq();
+    if (dist < s_mouseRadius * s_mouseRadius) 
+        gameLife[i].next ^= true;
+}
+
 __global__ void drawParticles_kernel(cudaSurfaceObject_t surface, GameLife* particles, int numberParticles, int width, int height, float zoom, float panX, float panY){
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= numberParticles || !particles[i].alive) return;
     GameLife gl = particles[i];
-    vec2f pos = gl.position;
+    vec2 pos = gl.position;
     float radius = gl.radius * zoom;
     int x0 = (int)(width / 2.0f + (pos.x + panX) * zoom);
     int y0 = (int)(height / 2.0f + (pos.y + panY) * zoom);
@@ -61,12 +86,14 @@ CUDAHandler::CUDAHandler(int width, int height, GLuint textureID) :  width(width
 {
     cudaGraphicsGLRegisterImage(&cudaResource, textureID, GL_TEXTURE_2D, cudaGraphicsRegisterFlagsSurfaceLoadStore);
     instance = this; // store global reference (to be used for mouse and imGui User Interface (UI) operations)
-    center = vec2f(width / 2.0f, height / 2.0f);
+    center = vec2(width / 2.0f, height / 2.0f);
     
 }
 
 CUDAHandler::~CUDAHandler()
 {
+    cudaFree(d_gameLife);
+
     cudaGraphicsUnregisterResource(cudaResource);
     
 }
@@ -81,18 +108,18 @@ void CUDAHandler::updateDraw(float dt)
     } 
     
 
-    GameLife* d_gameLife;
-    checkCuda(cudaMalloc(&d_gameLife, gamelife.size() * sizeof(GameLife)));
+    // GameLife* d_gameLife;
+    // checkCuda(cudaMalloc(&d_gameLife, gamelife.size() * sizeof(GameLife)));
     checkCuda(cudaMemcpy(d_gameLife, gamelife.data(), gamelife.size() * sizeof(GameLife), cudaMemcpyHostToDevice));
     
     
-    activateGameLife(d_gameLife);
+    if(startSimulation) activateGameLife(d_gameLife);
     checkCuda(cudaMemcpy(gamelife.data(), d_gameLife, gamelife.size() * sizeof(GameLife), cudaMemcpyDeviceToHost));
     
 
     cudaSurfaceObject_t surface = MapSurfaceResouse(); 
    
-    clearGraphicsDisply(surface, SUN_YELLOW);
+    clearGraphicsDisply(surface, DARK);
 
     // draw samples to check ZOOM & PAN
     
@@ -109,7 +136,7 @@ void CUDAHandler::updateDraw(float dt)
     checkCuda(cudaPeekAtLastError());
     checkCuda(cudaDeviceSynchronize());
 
-    cudaFree(d_gameLife);
+    // cudaFree(d_gameLife);
 
     cudaDestroySurfaceObject(surface);
     cudaGraphicsUnmapResources(1, &cudaResource);
@@ -125,7 +152,7 @@ void CUDAHandler::clearGraphicsDisply(cudaSurfaceObject_t &surface, uchar4 color
     clearSurface_kernel<<<clearGrid, clearBlock>>>(surface, width, height, color);
 }
 
-void CUDAHandler::drawGlowingCircle(cudaSurfaceObject_t &surface, vec2f position, float radius, float glowExtent, uchar4 color)
+void CUDAHandler::drawGlowingCircle(cudaSurfaceObject_t &surface, vec2 position, float radius, float glowExtent, uchar4 color)
 {
     // Map world center to screen center
     float screen_cx = (position.x + panX) * zoom + width / 2.0f;
@@ -157,7 +184,7 @@ void CUDAHandler::drawGlowingCircle(cudaSurfaceObject_t &surface, vec2f position
     drawGlowingCircle_kernel<<<gridSize, blockSize>>>(surface, width, height, position.x, position.y, radius,  color, 1.5f, xmin, ymin, zoom, panX, panY);
 }
 
-void CUDAHandler::drawRing(cudaSurfaceObject_t &surface, vec2f position, float radius, float thickness, uchar4 color)
+void CUDAHandler::drawRing(cudaSurfaceObject_t &surface, vec2 position, float radius, float thickness, uchar4 color)
 {
     // Map world center to screen center
     float screen_cx = (position.x + panX) * zoom + width / 2.0f;
@@ -243,7 +270,8 @@ void CUDAHandler::initGameLife()
 {
     
     int top = 1;
-    setGroupOfParticles(numberOfParticles, top, {16, 9});
+    setGroupOfParticles(numberOfParticles, top, {16, 9}, 1);
+    checkCuda(cudaMalloc(&d_gameLife, gamelife.size() * sizeof(GameLife)));
 
 }
 
@@ -275,8 +303,29 @@ void CUDAHandler::drawGameLife(cudaSurfaceObject_t &surface, GameLife *&d_gameLi
     drawParticles_kernel<<<blocks, threads>>>(surface, d_gameLife, gamelife.size(), width, height, zoom, panX, panY);
 }
 
+void CUDAHandler::disturbeGameLife(vec2 mousePosition)
+{
+    // for (int i = 0; i < gamelife.size(); ++i) {
 
-void CUDAHandler::setGroupOfParticles(int totalParticles, float top, int2 ratio, bool anchors)
+    //     float d2 = (gamelife[i].position - mousePosition).magSq();
+    //     if (d2 <  mouseCursorRadius * mouseCursorRadius) {
+            
+    //         gamelife[i].next ^= true;
+
+    //     }
+
+    // }
+    checkCuda(cudaMemcpy(d_gameLife, gamelife.data(), gamelife.size() * sizeof(GameLife), cudaMemcpyHostToDevice));
+    int threads = 256;
+    int blocks = (gamelife.size() + threads - 1) / threads;
+
+    disturbeGameLife_kernel<<<blocks, threads>>>(d_gameLife, mousePosition.x, mousePosition.y, gamelife.size(), mouseCursorRadius);
+
+    checkCuda(cudaMemcpy(gamelife.data(), d_gameLife, gamelife.size() * sizeof(GameLife), cudaMemcpyDeviceToHost));
+
+}
+
+void CUDAHandler::setGroupOfParticles(int totalParticles, float top, int2 ratio, bool anchors )
 {
     
     // ratio refers to the proportion of length vs width
@@ -288,7 +337,11 @@ void CUDAHandler::setGroupOfParticles(int totalParticles, float top, int2 ratio,
     gridCols = cols;    
 
     int offset = width / 2.0f - (cols - 1) * particleRadius;    
-    vec2f topLeft(offset, top);
+    vec2 topLeft(offset, top);
+
+    float widthFactor  = 0.1f;
+    int rowsSize = widthFactor * gridRows;
+    int colsSize = widthFactor * gridCols;
 
     // Place particles in a 2D grid at restLength spacing
     for (int r = 0; r < rows; ++r) {
@@ -296,12 +349,53 @@ void CUDAHandler::setGroupOfParticles(int totalParticles, float top, int2 ratio,
             float x = topLeft.x + c * restLength;
             float y = topLeft.y + r * restLength;
             GameLife gl;
-            gl.position = vec2f(x,y);
+            gl.position = vec2(x,y);
             gl.radius = particleRadius;
-            gl.alive = gl.next = randomBool();
-            // if (c == 2 && ( r == 1 || r == 2 || r == 3)) gl.next = true;
-            // else gl.next = false;
-            gl.color = RED_MERCURY;
+            switch(option){
+                case 0: 
+                    gl.alive = gl.next = randomBool();
+                    gl.color = RED_MERCURY;
+                    break;
+                case 1:
+                    if ((c / 80) % 2 == 0) {
+                        gl.alive = gl.next = true;      // cell is ON
+                        gl.color = GREEN;
+                    } else {
+                        gl.alive = gl.next = false;     // cell is OFF
+                        gl.color = GOLD;
+                    }
+                    break;
+                case 2:
+                    if ((r / 80) % 2 == 0) {
+                        gl.alive = gl.next = true;      // cell is ON
+                        gl.color = GREEN;
+                    } else {
+                        gl.alive = gl.next = false;     // cell is OFF
+                        gl.color = GOLD;
+                    }
+                    break;
+                case 3:
+                    
+                    if ((r / rowsSize) % 2 == 0 && c / colsSize % 2 == 0) {
+                        gl.alive = gl.next = true;      // cell is ON
+                        gl.color = GREEN;
+                    } else {
+                        gl.alive = gl.next = false;     // cell is OFF
+                        gl.color = GOLD;
+                    }
+                    // if ((c / 80) % 2 == 0) {
+                    //     gl.alive = gl.next = true;      // cell is ON
+                    //     gl.color = GREEN;
+                    // } else {
+                    //     gl.alive = gl.next = false;     // cell is OFF
+                    //     gl.color = GOLD;
+                    // }
+                    break;
+                default: 
+                    break;
+
+            }
+            
             gamelife.push_back(gl);
         }
     }

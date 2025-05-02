@@ -16,10 +16,15 @@ void SimulationUI::render(CUDAHandler &sim)
     if (showMenu) {
 
         ImGui::Begin("Simulation Control");
+        ImGui::Text("Start Simulation :"); ImGui::SameLine();
+        if (ImGui::Button(sim.startSimulation ? "ON" : "OFF")) {
+            sim.startSimulation ^= true;
+        }
         ImGui::Separator;
         ImGui::Text("Zoom Factor: %f", sim.zoom);
         ImGui::Text("FPS: %.1f", ImGui::GetIO().Framerate);
         ImGui::Text("Actual FPS: %.1f", 1.0f / sim.dt);
+        
         
         // Add more sliders for simulation params here
         ImGui::End();
@@ -186,65 +191,17 @@ void SimulationUI::mouseMotionCallback(int x, int y)
         sim->lastMouseY = y;
 
         glutPostRedisplay();
+    } else if (sim->toolMode == DISTURBE) {
+        // Convert screen coordinates to world space
+        float worldx = (x - sim->width / 2.0f) / sim->zoom - sim->panX;
+        float worldy = (y - sim->height / 2.0f) / sim->zoom - sim->panY;
+        vec2 targetPos(worldx, worldy);
+        sim->disturbeGameLife(targetPos);
+        // record screen position
+        sim->lastMouseX = x;
+        sim->lastMouseY = y;
+
     }
-
-    // if (sim->getToolMode() == DRAG) {
-    //     float worldX = (x - sim->width / 2.0f) / sim->zoom - sim->panX;
-    //     float worldY = (y - sim->height / 2.0f) / sim->zoom - sim->panY;
-    //     Vec2 targetPos(worldX, worldY);
-    //     Vec2 totalForce;
-    
-    //     for (int i = 0; i < sim->selectedParticles.size(); ++i){
-    //         Particle& p = sim->particles[sim->selectedParticles[i]];
-    
-    //         if (sim->getTreeMode() == PENDULUM) {
-    //             Vec2 delta = targetPos - p.position;
-    //             Vec2 velocity = p.velocity;
-    
-    //             float springK = 500.0f;
-    //             float damping = 20.0f;
-    
-    //             Vec2 springForce = delta * springK;
-    //             Vec2 dampingForce = -velocity * damping;
-    //             totalForce = springForce + dampingForce;
-    
-    //             float maxForce = 10000.0f;
-    //             if (totalForce.mag() > maxForce) {
-    //                 totalForce = totalForce.normalize() * maxForce;
-    //             }
-    
-    //         } else {
-    //             Vec2 delta = targetPos - p.position;
-    //             float maxForce = 1000.0f;
-    //             float k = 10.f;
-    
-    //             totalForce = delta * k * p.mass;
-    //             totalForce = (delta.mag() > maxForce) ? totalForce.normalize() * maxForce : totalForce;
-    //         }
-    
-    //         p.externalForce = totalForce;
-    
-    //         if (sim->getTreeMode() != PENDULUM) {
-    //             p.applyForce(totalForce);
-    //             p.color = RED_MERCURY;
-    //             p.eulerIntegration(CUDAHandler::instance->dt);
-    //         }
-    //     }
-    // }
-
-    // //////////////////////////////////////////////////////////////////////////////////
-    // if (sim->getToolMode() == DISTURBE || sim->getToolMode() == TEAR || sim->getToolMode() == ACTIVE) {
-    //     // ✅ Convert screen coordinates to world/sim space
-    //     float worldX = (x - sim->width / 2.0f) / sim->zoom - sim->panX;
-    //     float worldY = (y - sim->height / 2.0f) / sim->zoom - sim->panY;
-    //     Vec2 targetPos(worldX, worldY);
-        
-    //     // sim->applyPullToParticle(targetPos);
-    //     sim->applyPokeDisturbance(targetPos); 
-    // }
-
-    // sim->lastMouseX = x; //worldX;
-    // sim->lastMouseY = y; // worldY;
 
 }
 
@@ -279,8 +236,12 @@ void SimulationUI::handleMouseClick(int button, int state, int x, int y){
             sim->isPanEnabled = true;
             sim->lastMouseX = x;
             sim->lastMouseY = y;
+            
 
+        } else {
+            sim->toolMode = DISTURBE;
         }
+
         // if (sim->getToolMode() == DRAG)
         //     sim->applyPullToParticle(mousePos); // grab a particle
         
@@ -288,7 +249,7 @@ void SimulationUI::handleMouseClick(int button, int state, int x, int y){
         // sim->lastMouseX = x; // This is used to update the circular mouse pointer 
         // sim->lastMouseY = y; 
 
-        // sim->leftMouseDown = true;
+        // sim->leftMouseDown = true;S
 
         
     } else if (state == GLUT_UP) {

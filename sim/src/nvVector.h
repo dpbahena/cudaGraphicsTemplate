@@ -78,6 +78,7 @@
 #define NV_VECTOR_H
 
 #include <algorithm>   // to use std::max and std::min
+#include <math.h>
 
 
 namespace nv
