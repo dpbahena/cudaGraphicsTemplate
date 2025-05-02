@@ -560,6 +560,61 @@ void CUDAHandler::setGroupOfParticles(int totalParticles, int2 ratio, bool ancho
                         gl.color = GOLD;
                     }
                     break;
+                case 4: // diagonal
+                    if (r == c) {
+                        gl.alive = gl.next = true;
+                        gl.color = GREEN;
+                    } else {
+                        gl.alive = gl.next = false;
+                        gl.color = GOLD;
+                    }
+                    break;
+                case 5:   // x shape
+                    if (r == c || r + c == rows - 1) {
+                        gl.alive = gl.next = true;
+                        gl.color = RED_MERCURY;
+                    } else {
+                        gl.alive = gl.next = false;
+                        gl.color = GOLD;
+                    }
+                    break;
+                case 6: { // Circle
+                    float centerX = cols / 2.0f;
+                    float centerY = rows / 2.0f;
+                    float radiusSquared = (rows / 3.0f) * (rows / 3.0f);
+                    float dx = c - centerX;
+                    float dy = r - centerY;
+                    if (dx * dx + dy * dy <= radiusSquared) {
+                        gl.alive = gl.next = true;
+                        gl.color = BLUE_PLANET;
+                    } else {
+                        gl.alive = gl.next = false;
+                        gl.color = SPACE_NIGH;
+                    }
+                    break;
+                    }
+                case 7: { // Spiral
+                    float cx = cols / 2.0f;
+                    float cy = rows / 2.0f;
+                    float dx = c - cx;
+                    float dy = r - cy;
+                    float dist = sqrt(dx * dx + dy * dy);
+                    float angle = atan2(dy, dx);  // [-π, π]
+                    float spiral = fmod(dist + angle * 5.0f, 10.0f);  // tweak factor for arms
+                    if (spiral < 5.0f) {
+                        gl.alive = gl.next = true;
+                        gl.color = BLUE_PLANET;
+                    } else {
+                        gl.alive = gl.next = false;
+                        gl.color = GREEN;
+                    }
+                    break;
+                }
+                    
+                    
+                
+                
+                
                 default: 
                     break;
 

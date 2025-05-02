@@ -30,7 +30,7 @@ void SimulationUI::render(CUDAHandler &sim)
         }
         ImGui::PopStyleColor();
         // Combo for Tree Display Mode
-        const char* options[] = { "Random", "Vertical", "Horizontal", "Checkered"};
+        const char* options[] = { "Random", "Vertical", "Horizontal", "Checkered", "Diagonal", "X-shape", "Circle", "Spiral"};
         static int selectedOption = sim.option; 
 
         if (ImGui::Combo("Game of Life Pattern", &selectedOption, options, IM_ARRAYSIZE(options))) {
