@@ -2,6 +2,7 @@
 #include "cudaKernels.cuh"
 #include "cuda_utils.h"
 
+// 1D threads
 __global__ void disturbeGameLife_kernel(GameLife* gameLife, float mousePosX, float mousePosY, int numberOfCells, float mouseRadius)
 {
     int i = threadIdx.x + blockIdx.x * blockDim.x;
@@ -10,22 +11,145 @@ __global__ void disturbeGameLife_kernel(GameLife* gameLife, float mousePosX, flo
     
     __shared__ float s_mousePosX;
     __shared__ float s_mousePosY;
-    __shared__ float s_mouseRadius;
+    __shared__ float s_mouseRadiusSqr;
    
     
 
     if (threadIdx.x == 0) {
         s_mousePosX = mousePosX;
         s_mousePosY = mousePosY;
-        s_mouseRadius = mouseRadius;
+        s_mouseRadiusSqr = mouseRadius * mouseRadius;;
         
     }
     __syncthreads();
+
+    // ! Yes! EARLY-EXIT STRATEGY  - Early AABB rejection to skip square root / dotProduct
+    // vec2 pos = gameLife[i].position;
+    // float dx = pos.x - s_mousePosX;
+    // if(fabsf(dx) > mouseRadius) return;
+
+    // float dy = pos.y - s_mousePosY;
+    // if(fabsf(dy) > mouseRadius) return;
+    
+    // float distSq = dx * dx + dy * dy;
+
+    // No EARLY-EXIT STRATEGY
     vec2 pos(s_mousePosX, s_mousePosY);
-    float dist = (gameLife[i].position - pos).magSq();
-    if (dist < s_mouseRadius * s_mouseRadius) 
+    float distSq = (gameLife[i].position - pos).magSq();
+
+    if (distSq < s_mouseRadiusSqr) {
         gameLife[i].next ^= true;
+        gameLife[i].color = make_uchar4(186, 186, 186, 255);
+    }
 }
+
+__global__ void disturbeGameLife_kernel_2D(
+    GameLife* gameLife,
+    int gridRows, int gridCols,
+    float cellSpacing,
+    float mousePosX, float mousePosY,
+    float mouseRadius)
+{
+    int r = blockIdx.y * blockDim.y + threadIdx.y;
+    int c = blockIdx.x * blockDim.x + threadIdx.x;
+    if (r >= gridRows || c >= gridCols) return;
+
+    int idx = r * gridCols + c;
+
+    vec2 pos = gameLife[idx].position;
+
+    // AABB rejection
+    float dx = pos.x - mousePosX;
+    if (fabsf(dx) > mouseRadius) return;
+
+    float dy = pos.y - mousePosY;
+    if (fabsf(dy) > mouseRadius) return;
+
+    float distSq = dx * dx + dy * dy;
+    if (distSq < mouseRadius * mouseRadius) {
+        gameLife[idx].next ^= true;
+    }
+}
+
+__global__ void disturbGameLife_kernel_windowed(
+    GameLife* gameLife,
+    int gridRows, int gridCols,
+    float cellSpacing,
+    float mouseX, float mouseY,
+    float radius,
+    int rowOffset, int colOffset)
+{
+    int localRow = blockIdx.y * blockDim.y + threadIdx.y;
+    int localCol = blockIdx.x * blockDim.x + threadIdx.x;
+
+    int globalRow = rowOffset + localRow;
+    int globalCol = colOffset + localCol;
+
+    if (globalRow >= gridRows || globalCol >= gridCols) return;
+
+    int index = globalRow * gridCols + globalCol;
+
+    vec2 pos = gameLife[index].position;
+
+    float dx = pos.x - mouseX;
+    float dy = pos.y - mouseY;
+
+    if (fabsf(dx) > radius || fabsf(dy) > radius) return;
+
+    float distSq = dx * dx + dy * dy;
+    if (distSq < radius * radius) {
+        gameLife[index].next ^= true;
+    }
+}
+
+__global__ void disturbGameLife_kernel_windowed_shared(
+    GameLife* gameLife,
+    int gridRows, int gridCols,
+    float cellSpacing,
+    float mouseX, float mouseY,
+    float radius,
+    int rowOffset, int colOffset)
+{
+    int localRow = blockIdx.y * blockDim.y + threadIdx.y;
+    int localCol = blockIdx.x * blockDim.x + threadIdx.x;
+
+    int globalRow = rowOffset + localRow;
+    int globalCol = colOffset + localCol;
+
+    if (globalRow >= gridRows || globalCol >= gridCols) return;
+
+    // --- Shared memory for read-only constants
+    __shared__ float s_mouseX;
+    __shared__ float s_mouseY;
+    __shared__ float s_radiusSq;
+
+    if (threadIdx.x == 0 && threadIdx.y == 0) {
+        s_mouseX = mouseX;
+        s_mouseY = mouseY;
+        s_radiusSq = radius * radius;
+    }
+
+    __syncthreads();  // make sure all threads see the shared values
+
+    int index = globalRow * gridCols + globalCol;
+
+    vec2 pos = gameLife[index].position;
+
+    float dx = pos.x - s_mouseX;
+    if (fabsf(dx) > radius) return;
+
+    float dy = pos.y - s_mouseY;
+    if (fabsf(dy) > radius) return;
+
+    float distSq = dx * dx + dy * dy;
+    if (distSq < s_radiusSq) {
+        gameLife[index].next ^= true;
+    }
+}
+
+
+
+
 
 __global__ void drawParticles_kernel(cudaSurfaceObject_t surface, GameLife* particles, int numberParticles, int width, int height, float zoom, float panX, float panY){
     int i = blockIdx.x * blockDim.x + threadIdx.x;
@@ -73,8 +197,9 @@ __global__ void activate_gameOfLife_kernel(GameLife* gamelife, int totalParticle
     // Apply rules
     if (gamelife[i].alive )
         gamelife[i].next = (aliveCount == 2 || aliveCount == 3); // stays alive or not
-    else
+    else {
         gamelife[i].next = (aliveCount == 3);
+    }
 }
 
 
@@ -87,6 +212,7 @@ CUDAHandler::CUDAHandler(int width, int height, GLuint textureID) :  width(width
     cudaGraphicsGLRegisterImage(&cudaResource, textureID, GL_TEXTURE_2D, cudaGraphicsRegisterFlagsSurfaceLoadStore);
     instance = this; // store global reference (to be used for mouse and imGui User Interface (UI) operations)
     center = vec2(width / 2.0f, height / 2.0f);
+    screenRatio = static_cast<float>(height) / width;
     
 }
 
@@ -103,18 +229,27 @@ void CUDAHandler::updateDraw(float dt)
     this->dt = dt;
     framesCount++;
 
-    if (gamelife.empty()) {
+    static int previousOption = option;
+    bool optionJustChaged = (option != previousOption);
+    previousOption = option;
+
+    static float previousWidthFactor = widthFactor;
+    bool widthFactorJustChaged = (widthFactor != previousWidthFactor);
+    previousWidthFactor = widthFactor;
+
+    if (gamelife.empty() || optionJustChaged || (widthFactorJustChaged && option > 0)) {
+        framesCount = 0;
         initGameLife();
     } 
     
 
     // GameLife* d_gameLife;
     // checkCuda(cudaMalloc(&d_gameLife, gamelife.size() * sizeof(GameLife)));
-    checkCuda(cudaMemcpy(d_gameLife, gamelife.data(), gamelife.size() * sizeof(GameLife), cudaMemcpyHostToDevice));
+    // checkCuda(cudaMemcpy(d_gameLife, gamelife.data(), gamelife.size() * sizeof(GameLife), cudaMemcpyHostToDevice));
     
     
     if(startSimulation) activateGameLife(d_gameLife);
-    checkCuda(cudaMemcpy(gamelife.data(), d_gameLife, gamelife.size() * sizeof(GameLife), cudaMemcpyDeviceToHost));
+    // checkCuda(cudaMemcpy(gamelife.data(), d_gameLife, gamelife.size() * sizeof(GameLife), cudaMemcpyDeviceToHost));
     
 
     cudaSurfaceObject_t surface = MapSurfaceResouse(); 
@@ -269,9 +404,11 @@ void CUDAHandler::activateGameLife(GameLife* &d_gameLife)
 void CUDAHandler::initGameLife()
 {
     
-    int top = 1;
-    setGroupOfParticles(numberOfParticles, top, {16, 9}, 1);
+    gamelife.clear();
+    startSimulation = false;
+    setGroupOfParticles(numberOfParticles, {16, 9}, 1);
     checkCuda(cudaMalloc(&d_gameLife, gamelife.size() * sizeof(GameLife)));
+    checkCuda(cudaMemcpy(d_gameLife, gamelife.data(), gamelife.size() * sizeof(GameLife), cudaMemcpyHostToDevice));
 
 }
 
@@ -315,17 +452,51 @@ void CUDAHandler::disturbeGameLife(vec2 mousePosition)
     //     }
 
     // }
-    checkCuda(cudaMemcpy(d_gameLife, gamelife.data(), gamelife.size() * sizeof(GameLife), cudaMemcpyHostToDevice));
+
+    // 1D kernel //
+    // checkCuda(cudaMemcpy(d_gameLife, gamelife.data(), gamelife.size() * sizeof(GameLife), cudaMemcpyHostToDevice));
     int threads = 256;
     int blocks = (gamelife.size() + threads - 1) / threads;
 
     disturbeGameLife_kernel<<<blocks, threads>>>(d_gameLife, mousePosition.x, mousePosition.y, gamelife.size(), mouseCursorRadius);
 
-    checkCuda(cudaMemcpy(gamelife.data(), d_gameLife, gamelife.size() * sizeof(GameLife), cudaMemcpyDeviceToHost));
+    // checkCuda(cudaMemcpy(gamelife.data(), d_gameLife, gamelife.size() * sizeof(GameLife), cudaMemcpyDeviceToHost));
+
+
+    // 2D Kernel
+    // // checkCuda(cudaMemcpy(d_gameLife, gamelife.data(), gamelife.size() * sizeof(GameLife), cudaMemcpyHostToDevice));
+    // dim3 blockSize(16, 16);
+    // dim3 gridSize((gridCols + blockSize.x - 1) / blockSize.x, (gridRows + blockSize.y - 1) / blockSize.y);
+
+    // disturbeGameLife_kernel_2D<<<gridSize, blockSize>>>(d_gameLife, gridRows, gridCols, restLength, mousePosition.x, mousePosition.y, mouseCursorRadius);
+    
+    // // checkCuda(cudaMemcpy(gamelife.data(), d_gameLife, gamelife.size() * sizeof(GameLife), cudaMemcpyDeviceToHost));
+
+   
+    
+
+
+    // Compute min/max row/col range on host
+    // checkCuda(cudaMemcpy(d_gameLife, gamelife.data(), gamelife.size() * sizeof(GameLife), cudaMemcpyHostToDevice));
+    // int minCol = max(0, int((mousePosition.x - mouseCursorRadius - topLeft.x) / restLength));
+    // int maxCol = min(gridCols, int((mousePosition.x + mouseCursorRadius - topLeft.x) / restLength));
+    // int minRow = max(0, int((mousePosition.y - mouseCursorRadius - topLeft.y) / restLength));
+    // int maxRow = min(gridRows, int((mousePosition.y + mouseCursorRadius - topLeft.y) / restLength));
+    // int drawWidth   = maxCol - minCol + 1;
+    // int drawHeight  = maxRow - minRow + 1;
+    
+    // dim3 blockSize(16, 16);
+    // dim3 gridSize((drawWidth + blockSize.x - 1) / blockSize.x, (drawHeight + blockSize.y - 1) / blockSize.y);
+    // // disturbGameLife_kernel_windowed<<<gridSize, blockSize>>>(d_gameLife, gridRows, gridCols, restLength, mousePosition.x, mousePosition.y, mouseCursorRadius, minRow, minCol);
+    // disturbGameLife_kernel_windowed_shared<<<gridSize, blockSize>>>(d_gameLife, gridRows, gridCols, restLength, mousePosition.x, mousePosition.y, mouseCursorRadius, minRow, minCol);
+    // // checkCuda(cudaMemcpy(gamelife.data(), d_gameLife, gamelife.size() * sizeof(GameLife), cudaMemcpyDeviceToHost));
+
+
+
 
 }
 
-void CUDAHandler::setGroupOfParticles(int totalParticles, float top, int2 ratio, bool anchors )
+void CUDAHandler::setGroupOfParticles(int totalParticles, int2 ratio, bool anchors )
 {
     
     // ratio refers to the proportion of length vs width
@@ -336,12 +507,17 @@ void CUDAHandler::setGroupOfParticles(int totalParticles, float top, int2 ratio,
     gridRows = rows;
     gridCols = cols;    
 
-    int offset = width / 2.0f - (cols - 1) * particleRadius;    
-    vec2 topLeft(offset, top);
+    // int offset = width / 2.0f - (cols - 1) * particleRadius;    
+    // float offset = width / 2.0f - (cols - 1) * restLength / 2.0f;
+    float offsetX = (width  - (cols - 1) * restLength) / 2.0f;
+    float offsetY = (height - (rows - 1) * restLength) / 2.0f;
+    topLeft = vec2(offsetX, offsetY);
 
-    float widthFactor  = 0.1f;
+
+    // topLeft = vec2(offset, top);
+    
     int rowsSize = widthFactor * gridRows;
-    int colsSize = widthFactor * gridCols;
+    int colsSize = widthFactor * gridCols * screenRatio;  // screen ratio for correctness
 
     // Place particles in a 2D grid at restLength spacing
     for (int r = 0; r < rows; ++r) {
@@ -357,7 +533,7 @@ void CUDAHandler::setGroupOfParticles(int totalParticles, float top, int2 ratio,
                     gl.color = RED_MERCURY;
                     break;
                 case 1:
-                    if ((c / 80) % 2 == 0) {
+                    if ((c / colsSize) % 2 == 0) {
                         gl.alive = gl.next = true;      // cell is ON
                         gl.color = GREEN;
                     } else {
@@ -366,8 +542,8 @@ void CUDAHandler::setGroupOfParticles(int totalParticles, float top, int2 ratio,
                     }
                     break;
                 case 2:
-                    if ((r / 80) % 2 == 0) {
-                        gl.alive = gl.next = true;      // cell is ON
+                    if ((r / rowsSize) % 2 == 0) {
+                        gl.alive = gl.next = true;      // cell is ON  // horizontal
                         gl.color = GREEN;
                     } else {
                         gl.alive = gl.next = false;     // cell is OFF
@@ -376,20 +552,13 @@ void CUDAHandler::setGroupOfParticles(int totalParticles, float top, int2 ratio,
                     break;
                 case 3:
                     
-                    if ((r / rowsSize) % 2 == 0 && c / colsSize % 2 == 0) {
+                    if ((r / rowsSize) % 2 == 0 && c / colsSize % 2 == 0) {  // checkered
                         gl.alive = gl.next = true;      // cell is ON
                         gl.color = GREEN;
                     } else {
                         gl.alive = gl.next = false;     // cell is OFF
                         gl.color = GOLD;
                     }
-                    // if ((c / 80) % 2 == 0) {
-                    //     gl.alive = gl.next = true;      // cell is ON
-                    //     gl.color = GREEN;
-                    // } else {
-                    //     gl.alive = gl.next = false;     // cell is OFF
-                    //     gl.color = GOLD;
-                    // }
                     break;
                 default: 
                     break;

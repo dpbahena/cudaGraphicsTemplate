@@ -16,11 +16,30 @@ void SimulationUI::render(CUDAHandler &sim)
     if (showMenu) {
 
         ImGui::Begin("Simulation Control");
+        if (ImGui::Button("Reset Sim")) {
+            sim.initGameLife();
+        }
+        if (sim.startSimulation)
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.8f, 0.2f, 1.0f)); // green
+        else
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.8f, 0.2f, 0.2f, 1.0f)); // red
+
         ImGui::Text("Start Simulation :"); ImGui::SameLine();
         if (ImGui::Button(sim.startSimulation ? "ON" : "OFF")) {
             sim.startSimulation ^= true;
         }
+        ImGui::PopStyleColor();
+        // Combo for Tree Display Mode
+        const char* options[] = { "Random", "Vertical", "Horizontal", "Checkered"};
+        static int selectedOption = sim.option; 
+
+        if (ImGui::Combo("Game of Life Pattern", &selectedOption, options, IM_ARRAYSIZE(options))) {
+            sim.option = selectedOption;
+        }
+        if (sim.option > 0)
+            ImGui::SliderFloat("WidthFactor", &sim.widthFactor, 0.01f,0.4f);
         ImGui::Separator;
+        ImGui::Text("Total Cells: %d", (int)sim.gamelife.size());
         ImGui::Text("Zoom Factor: %f", sim.zoom);
         ImGui::Text("FPS: %.1f", ImGui::GetIO().Framerate);
         ImGui::Text("Actual FPS: %.1f", 1.0f / sim.dt);
@@ -198,10 +217,12 @@ void SimulationUI::mouseMotionCallback(int x, int y)
         vec2 targetPos(worldx, worldy);
         sim->disturbeGameLife(targetPos);
         // record screen position
-        sim->lastMouseX = x;
-        sim->lastMouseY = y;
+        // sim->lastMouseX = x;
+        // sim->lastMouseY = y;
 
     }
+    sim->lastMouseX = x;
+    sim->lastMouseY = y;
 
 }
 

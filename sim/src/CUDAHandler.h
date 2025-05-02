@@ -56,9 +56,10 @@ class CUDAHandler {
         // program variables
         float dt;  // delta time
         int height, width;
+        float screenRatio;
         vec2 center;
         int framesCount{};
-        
+        int padding = 50;
 
 
 
@@ -79,18 +80,20 @@ class CUDAHandler {
         void drawRing(cudaSurfaceObject_t &surface, vec2 position, float radius, float thickness, uchar4 color);
         
         // Game of Life
+        vec2 topLeft;
         bool startSimulation = false;
         int option = 3;
+        float widthFactor = 0.1f;
         GameLife* d_gameLife; // for GPU operations
         int gridRows, gridCols;
         std::vector<GameLife> gamelife;
-        int numberOfParticles = 500000;
-        float particleRadius = 1;
-        float restLength = 2;
+        int numberOfParticles = 1000000;
+        float particleRadius = .5f;
+        float restLength = 1;
         void activateGameLife();
         void activateGameLife(GameLife* &d_gameLife);
         void initGameLife();
-        void setGroupOfParticles(int totalParticles, float top, int2 ratio, bool anchors = 0);
+        void setGroupOfParticles(int totalParticles, int2 ratio, bool anchors = 0);
         int2 calculateGrid(int n, int a, int b);
         void drawGameLife(cudaSurfaceObject_t &surface, GameLife* &d_gameLife);
         void disturbeGameLife(vec2 mousePosition);
