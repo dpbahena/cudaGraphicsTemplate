@@ -25,7 +25,7 @@ make
 ## Pan & Zoom
 * Pan: SHIFT + Left Mouse
 * Zoom: SHIFT + Wheel Mouse
-Dragging Objects
+## Dragging Objects
 * Left Click: Disturbe cells in Game of Life
 
 
