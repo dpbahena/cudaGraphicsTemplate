@@ -82,8 +82,8 @@ class CUDAHandler {
         // Game of Life
         vec2 topLeft;
         bool startSimulation = false;
-        int option = 9;
-        float widthFactor = 0.1f;
+        int option = 6;
+        
         GameLife* d_gameLife; // for GPU operations
         int gridRows, gridCols;
         std::vector<GameLife> gamelife;
@@ -98,7 +98,20 @@ class CUDAHandler {
         void drawGameLife(cudaSurfaceObject_t &surface, GameLife* &d_gameLife);
         void disturbeGameLife(vec2 mousePosition);
 
-        
+        // options 0 Grid 
+        int gridSize = 20;
+        // Options 1 - 3  : Vertical, horizontal, checkered
+        float widthFactor = 0.1f;
+        // Option 7 & 10  : concentric Rings    
+        float ringSpacing = 5.0f;
+        float thickness = 1.5f;
+        // Option 7 : Spiral
+        float armFrequency = 5.0f;
+        float spiralSpacing = 6.0f;
+        float armCount = 5.0f;
+        float turns = 3.0;
+
+  
 
 
       

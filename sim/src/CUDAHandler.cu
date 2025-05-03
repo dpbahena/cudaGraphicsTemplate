@@ -237,7 +237,37 @@ void CUDAHandler::updateDraw(float dt)
     bool widthFactorJustChaged = (widthFactor != previousWidthFactor);
     previousWidthFactor = widthFactor;
 
-    if (gamelife.empty() || optionJustChaged || (widthFactorJustChaged && option > 0)) {
+    static int previousgridSize = gridSize;
+    bool gridSizeJustChaged = (gridSize != previousgridSize);
+    previousgridSize = gridSize;
+
+    static float previousthickness = thickness;
+    bool thicknessJustChaged = (thickness != previousthickness);
+    previousthickness = thickness;
+
+    static float previousringSpacing = ringSpacing;
+    bool ringSpacingJustChaged = (ringSpacing != previousringSpacing);
+    previousringSpacing = ringSpacing;
+
+    static float previousarmFrequency = armFrequency;
+    bool armFrequencyJustChaged = (armFrequency != previousarmFrequency);
+    previousarmFrequency = armFrequency;
+
+    static float previousarmCount = armCount;
+    bool armCountJustChaged = (armCount != previousarmCount);
+    previousarmCount = armCount;
+
+    static float previousspiralSpacing = spiralSpacing;
+    bool spiralSpacingJustChaged = (spiralSpacing != previousspiralSpacing);
+    previousspiralSpacing = spiralSpacing;
+
+    static float previousturns = turns;
+    bool turnsJustChaged = (turns != previousturns);
+    previousturns = turns;
+
+
+
+    if (gamelife.empty() || optionJustChaged || widthFactorJustChaged || gridSizeJustChaged || thicknessJustChaged || ringSpacingJustChaged || armFrequencyJustChaged || armCountJustChaged || spiralSpacingJustChaged || turnsJustChaged) {
         framesCount = 0;
         initGameLife();
     } 
@@ -505,7 +535,7 @@ void CUDAHandler::setGroupOfParticles(int totalParticles, int2 ratio, bool ancho
     int rows = grid.x;
     int cols = grid.y;
 
-    printf("Rows: %d  -  Cols: %d - total: %d\n", rows, cols, rows * cols);
+    // printf("Rows: %d  -  Cols: %d - total: %d\n", rows, cols, rows * cols);
 
     gridRows = rows;
     gridCols = cols;    
@@ -531,14 +561,11 @@ void CUDAHandler::setGroupOfParticles(int totalParticles, int2 ratio, bool ancho
             gl.position = vec2(x,y);
             gl.radius = particleRadius;
             switch(option){
-                case 0: 
-                    // gl.alive = gl.next = randomBool();
-                    if (c % 50 == 0 || r % 50 == 0) {
+                case 0:   // grid
+                    
+                    if (c % gridSize == 0 || r % gridSize == 0) {
                         gl.alive = gl.next = true;
                         gl.color = WHITE;
-                    } else if ( c % 100 == 0  || r & 100 == 0) {
-                        gl.alive = gl.next = false;
-                        gl.color = SUN_YELLOW;
                     } else {
                         gl.alive = gl.next = false;
                         gl.color = GREEN;
@@ -575,7 +602,7 @@ void CUDAHandler::setGroupOfParticles(int totalParticles, int2 ratio, bool ancho
                     }
                     break;
                 case 4: { // diagonal
-                    int band = 100;
+                    int band = 0;
                     if (abs(r - c) < band ) {
                         gl.alive = gl.next = true;
                         gl.color = GREEN;
@@ -586,7 +613,7 @@ void CUDAHandler::setGroupOfParticles(int totalParticles, int2 ratio, bool ancho
                     break;
                 }
                 case 5: {  // x shape
-                        int band = 2;
+                        int band = 0;
                         int centerOffset = cols - rows;
                         if (abs((r) - (c - centerOffset / 2)) <= band || abs((r) + (c - centerOffset / 2) - (rows - 1)) <= band) {
                         // if (r == c || r + c == rows - 1) {
@@ -603,35 +630,62 @@ void CUDAHandler::setGroupOfParticles(int totalParticles, int2 ratio, bool ancho
                 case 6: { // Circle
                     float centerX = cols / 2.0f;
                     float centerY = rows / 2.0f;
+                    int gap = 150;
+                    int gapSq = gap * gap;
                     float radiusSquared = (rows / 3.0f) * (rows / 3.0f);
+                    float radiusSquared2 = (rows / 6.0f) * (rows / 6.0f);
+                    float radiusSquared3 = (rows / 9.0f) * (rows / 9.0f);
                     float dx = c - centerX;
                     float dy = r - centerY;
-                    if (dx * dx + dy * dy <= radiusSquared) {
+                    float dist = dx * dx + dy * dy;
+                    if (dist <= radiusSquared && dist > radiusSquared2 + gapSq) {
                         gl.alive = gl.next = true;
                         gl.color = BLUE_PLANET;
+                    } else if (dist > radiusSquared2 && dist < radiusSquared3 + gapSq ){
+                        gl.alive = gl.next = true;
+                        gl.color = SUN_YELLOW;
                     } else {
                         gl.alive = gl.next = false;
                         gl.color = URANUS_BLUE;
                     }
                     break;
                     }
-                case 7: { // Spiral
+                case 7: {
                     float cx = cols / 2.0f;
                     float cy = rows / 2.0f;
+                
                     float dx = c - cx;
                     float dy = r - cy;
-                    float dist = sqrt(dx * dx + dy * dy);
-                    float angle = atan2(dy, dx);  // [-π, π]
-                    float spiral = fmod(dist + angle * 5.0f, 10.0f);  // tweak factor for arms
-                    if (spiral < 5.0f) {
+                    float dist = sqrtf(dx * dx + dy * dy);
+                    float angle = atan2f(dy, dx);  // [-π, π]
+                    angle = angle < 0 ? angle + 2.0f * M_PI : angle;
+                
+                    // Parameters
+                    // float turns = 3.0f;          // Number of spiral turns
+                    // float spacing = 5.0f;        // Spiral arm spacing
+                    // float thickness = 2.5f;      // Band thickness
+                
+                    // Clockwise spiral (original)
+                    float r_cw = angle * spiralSpacing * turns;
+                    float diff_cw = fabs(dist - r_cw);
+                
+                    // Counter-clockwise spiral: mirror by flipping angle
+                    float angle_ccw = 2.0f * M_PI - angle;
+                    float r_ccw = angle_ccw * spiralSpacing * turns;
+                    float diff_ccw = fabs(dist - r_ccw);
+                
+                    if (diff_cw < thickness || diff_ccw < thickness) {
                         gl.alive = gl.next = true;
-                        gl.color = BLUE_PLANET;
+                        gl.color = GREEN;
                     } else {
                         gl.alive = gl.next = false;
-                        gl.color = GREEN;
+                        gl.color = PINK;
                     }
                     break;
                 }
+                    
+                    
+                    
                 case 8: { // border
                     int border = 50;  // thickness of border
                     if (r < border || r >= rows - border || c < border || c >= cols - border) {
@@ -664,8 +718,8 @@ void CUDAHandler::setGroupOfParticles(int totalParticles, int2 ratio, bool ancho
                     float dy = r - cy;
                     float dist = sqrtf(dx * dx + dy * dy);
                 
-                    float ringSpacing = 5.0f;  // controls distance between rings
-                    float thickness = 1.5f;    // ring band thickness
+                    //* ringSpacing :controls distance between rings
+                    //* thickness : ring band thickness
                 
                     float modVal = fmodf(dist, ringSpacing);
                     if (modVal < thickness) {

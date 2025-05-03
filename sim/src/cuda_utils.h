@@ -23,6 +23,7 @@ const uchar4 DARK  = make_uchar4(0, 0, 0, 255);
 const uchar4 GREEN  = make_uchar4(127, 255, 0, 255);
 const uchar4 GOLD   = make_uchar4(239, 191, 4, 255);
 const uchar4 WHITE  = make_uchar4(255, 255, 255, 255);
+const uchar4 PINK   = make_uchar4(255, 192, 203, 255);
 
 
 #define checkCuda(ans) { gpuAssert((ans), #ans, __FILE__, __LINE__); }
