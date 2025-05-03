@@ -30,14 +30,14 @@ void SimulationUI::render(CUDAHandler &sim)
         }
         ImGui::PopStyleColor();
         // Combo for Tree Display Mode
-        const char* options[] = { "Random", "Vertical", "Horizontal", "Checkered", "Diagonal", "X-shape", "Circle", "Spiral"};
+        const char* options[] = { "Random", "Vertical", "Horizontal", "Checkered", "Diagonal", "X-shape", "Circle", "Spiral", "Border", "Doble border", "Rings", "Radial", "Animated Beams"};
         static int selectedOption = sim.option; 
 
         if (ImGui::Combo("Game of Life Pattern", &selectedOption, options, IM_ARRAYSIZE(options))) {
             sim.option = selectedOption;
         }
         if (sim.option > 0)
-            ImGui::SliderFloat("WidthFactor", &sim.widthFactor, 0.01f,0.4f);
+            ImGui::SliderFloat("WidthFactor", &sim.widthFactor, 0.01f,1.0f);
         ImGui::Separator;
         ImGui::Text("Total Cells: %d", (int)sim.gamelife.size());
         ImGui::Text("Zoom Factor: %f", sim.zoom);

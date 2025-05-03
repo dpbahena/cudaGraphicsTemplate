@@ -394,11 +394,12 @@ void CUDAHandler::activateGameLife()
 void CUDAHandler::activateGameLife(GameLife* &d_gameLife)
 {
 
-    int threads = 128;
-    int blocks = (numberOfParticles + threads - 1) / threads;
+    int threads = 256;
+    int blocks = (gamelife.size() + threads - 1) / threads;
     commitNextState_kernel<<<blocks, threads>>> (d_gameLife, gamelife.size());
     checkCuda(cudaDeviceSynchronize());
     activate_gameOfLife_kernel<<<blocks, threads>>>(d_gameLife, gamelife.size(), gridRows, gridCols);
+    
 }
 
 void CUDAHandler::initGameLife()
@@ -406,7 +407,7 @@ void CUDAHandler::initGameLife()
     
     gamelife.clear();
     startSimulation = false;
-    setGroupOfParticles(numberOfParticles, {16, 9}, 1);
+    setGroupOfParticles(numberOfParticles, {16, 9});
     checkCuda(cudaMalloc(&d_gameLife, gamelife.size() * sizeof(GameLife)));
     checkCuda(cudaMemcpy(d_gameLife, gamelife.data(), gamelife.size() * sizeof(GameLife), cudaMemcpyHostToDevice));
 
@@ -504,6 +505,8 @@ void CUDAHandler::setGroupOfParticles(int totalParticles, int2 ratio, bool ancho
     int rows = grid.x;
     int cols = grid.y;
 
+    printf("Rows: %d  -  Cols: %d - total: %d\n", rows, cols, rows * cols);
+
     gridRows = rows;
     gridCols = cols;    
 
@@ -529,10 +532,21 @@ void CUDAHandler::setGroupOfParticles(int totalParticles, int2 ratio, bool ancho
             gl.radius = particleRadius;
             switch(option){
                 case 0: 
-                    gl.alive = gl.next = randomBool();
-                    gl.color = RED_MERCURY;
+                    // gl.alive = gl.next = randomBool();
+                    if (c % 50 == 0 || r % 50 == 0) {
+                        gl.alive = gl.next = true;
+                        gl.color = WHITE;
+                    } else if ( c % 100 == 0  || r & 100 == 0) {
+                        gl.alive = gl.next = false;
+                        gl.color = SUN_YELLOW;
+                    } else {
+                        gl.alive = gl.next = false;
+                        gl.color = GREEN;
+                    }
+
+                    
                     break;
-                case 1:
+                case 1: // Vertical
                     if ((c / colsSize) % 2 == 0) {
                         gl.alive = gl.next = true;      // cell is ON
                         gl.color = GREEN;
@@ -541,18 +555,18 @@ void CUDAHandler::setGroupOfParticles(int totalParticles, int2 ratio, bool ancho
                         gl.color = GOLD;
                     }
                     break;
-                case 2:
+                case 2: // horizontal
                     if ((r / rowsSize) % 2 == 0) {
-                        gl.alive = gl.next = true;      // cell is ON  // horizontal
+                        gl.alive = gl.next = true;      // cell is ON  
                         gl.color = GREEN;
                     } else {
                         gl.alive = gl.next = false;     // cell is OFF
                         gl.color = GOLD;
                     }
                     break;
-                case 3:
+                case 3:    // checkered
                     
-                    if ((r / rowsSize) % 2 == 0 && c / colsSize % 2 == 0) {  // checkered
+                    if ((r / rowsSize) % 2 == 0 && c / colsSize % 2 == 0) { 
                         gl.alive = gl.next = true;      // cell is ON
                         gl.color = GREEN;
                     } else {
@@ -560,8 +574,9 @@ void CUDAHandler::setGroupOfParticles(int totalParticles, int2 ratio, bool ancho
                         gl.color = GOLD;
                     }
                     break;
-                case 4: // diagonal
-                    if (r == c) {
+                case 4: { // diagonal
+                    int band = 100;
+                    if (abs(r - c) < band ) {
                         gl.alive = gl.next = true;
                         gl.color = GREEN;
                     } else {
@@ -569,8 +584,14 @@ void CUDAHandler::setGroupOfParticles(int totalParticles, int2 ratio, bool ancho
                         gl.color = GOLD;
                     }
                     break;
-                case 5:   // x shape
-                    if (r == c || r + c == rows - 1) {
+                }
+                case 5: {  // x shape
+                        int band = 2;
+                        int centerOffset = cols - rows;
+                        if (abs((r) - (c - centerOffset / 2)) <= band || abs((r) + (c - centerOffset / 2) - (rows - 1)) <= band) {
+                        // if (r == c || r + c == rows - 1) {
+                        // if (abs(r - c) <= band || abs(r + c - (rows - 1)) <= band) {
+
                         gl.alive = gl.next = true;
                         gl.color = RED_MERCURY;
                     } else {
@@ -578,6 +599,7 @@ void CUDAHandler::setGroupOfParticles(int totalParticles, int2 ratio, bool ancho
                         gl.color = GOLD;
                     }
                     break;
+                }
                 case 6: { // Circle
                     float centerX = cols / 2.0f;
                     float centerY = rows / 2.0f;
@@ -589,7 +611,7 @@ void CUDAHandler::setGroupOfParticles(int totalParticles, int2 ratio, bool ancho
                         gl.color = BLUE_PLANET;
                     } else {
                         gl.alive = gl.next = false;
-                        gl.color = SPACE_NIGH;
+                        gl.color = URANUS_BLUE;
                     }
                     break;
                     }
@@ -610,6 +632,100 @@ void CUDAHandler::setGroupOfParticles(int totalParticles, int2 ratio, bool ancho
                     }
                     break;
                 }
+                case 8: { // border
+                    int border = 50;  // thickness of border
+                    if (r < border || r >= rows - border || c < border || c >= cols - border) {
+                        gl.alive = gl.next = true;
+                        gl.color = GREEN;
+                    } else {
+                        gl.alive = gl.next = false;
+                        gl.color = GOLD;
+                    }
+                    break;
+                }
+                case 9: {  // double border
+                    int outer = 1;  // outer thickness
+                    int inner = 50;  // inner offset
+                    bool isOuter = (r < outer || r >= rows - outer || c < outer || c >= cols - outer);
+                    bool isInner = (r >= inner && r < rows - inner && c >= inner && c < cols - inner);
+                    if (isOuter || isInner) {
+                        gl.alive = gl.next = true;
+                        gl.color = NEPTUNE_PURPLE;
+                    } else {
+                        gl.alive = gl.next = false;
+                        gl.color = SUN_YELLOW;
+                    }
+                    break;
+                }
+                case 10: { // concentric Rings
+                    float cx = cols / 2.0f;
+                    float cy = rows / 2.0f;
+                    float dx = c - cx;
+                    float dy = r - cy;
+                    float dist = sqrtf(dx * dx + dy * dy);
+                
+                    float ringSpacing = 5.0f;  // controls distance between rings
+                    float thickness = 1.5f;    // ring band thickness
+                
+                    float modVal = fmodf(dist, ringSpacing);
+                    if (modVal < thickness) {
+                        gl.alive = gl.next = true;
+                        gl.color = GREEN;
+                    } else {
+                        gl.alive = gl.next = false;
+                        gl.color = NEPTUNE_PURPLE;
+                    }
+                    break;
+                }
+                case 11: { // Radial beam
+                    float cx = cols / 2.0f;
+                    float cy = rows / 2.0f;
+                    float dx = c - cx;
+                    float dy = r - cy;
+                
+                    float angle = atan2f(dy, dx);  // range: [-π, π]
+                    angle = angle < 0 ? angle + 2.0f * M_PI : angle;  // normalize to [0, 2π]
+                
+                    int numBeams = 16;         // number of sun rays
+                    float beamWidth = M_PI * 2.0f / numBeams;  // angle between beams
+                
+                    int beamIndex = (int)(angle / beamWidth);
+                    if (beamIndex % 2 == 0) {
+                        gl.alive = gl.next = true;
+                        gl.color = SUN_YELLOW;
+                    } else {
+                        gl.alive = gl.next = false;
+                        gl.color = GREEN;
+                    }
+                    break;
+                }
+                case 12: {  // Animated Rotating Sunbeam
+                    float cx = cols / 2.0f;
+                    float cy = rows / 2.0f;
+                    float dx = c - cx;
+                    float dy = r - cy;
+                
+                    float angle = atan2f(dy, dx);
+                    angle = angle < 0 ? angle + 2.0f * M_PI : angle;
+                
+                    int numBeams = 16;
+                    float beamWidth = 2.0f * M_PI / numBeams;
+                
+                    float angularOffset = fmodf(framesCount * dt * 0.5f, 2.0f * M_PI);  // rotate over time
+                    angle += angularOffset;
+                
+                    int beamIndex = (int)(angle / beamWidth);
+                    if (beamIndex % 2 == 0) {
+                        gl.alive = gl.next = true;
+                        gl.color = SUN_YELLOW;
+                    } else {
+                        gl.alive = gl.next = false;
+                        gl.color = URANUS_BLUE;
+                    }
+                    break;
+                }
+                
+                
                     
                     
                 

@@ -82,7 +82,7 @@ class CUDAHandler {
         // Game of Life
         vec2 topLeft;
         bool startSimulation = false;
-        int option = 3;
+        int option = 9;
         float widthFactor = 0.1f;
         GameLife* d_gameLife; // for GPU operations
         int gridRows, gridCols;
