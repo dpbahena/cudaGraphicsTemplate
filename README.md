@@ -7,16 +7,9 @@
 * git clone https://github.com/ocornut/imgui.git
 
 
-## Pan & Zoom
-* Pan: SHIFT + Left Mouse
-* Zoom: SHIFT + Wheel Mouse
-Dragging Objects
-* Left Click: Disturbe cells in Game of Life
-
-
-
 ## Compile & Run
 ### Create the build directory (if not already there)
+cd sim
 mkdir -p build
 cd build
 ### Run cmake to configure the build system
@@ -29,7 +22,11 @@ make
 ./your_executable_name
 
 
-
+## Pan & Zoom
+* Pan: SHIFT + Left Mouse
+* Zoom: SHIFT + Wheel Mouse
+Dragging Objects
+* Left Click: Disturbe cells in Game of Life
 
 
 
