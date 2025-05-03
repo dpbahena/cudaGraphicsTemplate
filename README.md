@@ -1,8 +1,12 @@
-# cudaGraphicsTemplate
-Template includes ImGui, GLUT, CUDA, and OpenGL setups
+# Game of Life
 
-# Windows 11, VsCode (NO WSL)
-## Extensions  (from Microsoft)
+### Needs:ImGui, GLUT, CUDA, and OpenGL 
+* IMGUI folder is empty. Create a new one
+** Delete folder
+** from terminal go to /sim
+** git clone https://github.com/ocornut/imgui.git
+
+
  * C/C++ Themes
  * C/C++ IntelliSense
  * C/C++ Extension Pack
@@ -11,21 +15,31 @@ Template includes ImGui, GLUT, CUDA, and OpenGL setups
  * Remote Explorer
  * Remote -SSH
  
-    
-# CUDA
-## https://developer.nvidia.com/cuda-downloads  
-    ### Os:Linux
-    ### Ar: x86_64
-    ### Inst: deb(local)
 
-# Software Packages to install
 
-# Instructions:
-### Pan & Zoom
-* Pan:  SHIFT + Left  Mouse
-* Zoom:   ALT + Wheel Mouse
-### Dragging Objects
-* Left Mouse
+## Pan & Zoom
+* Pan: SHIFT + Left Mouse
+* Zoom: SHIFT + Wheel Mouse
+Dragging Objects
+* Left Click: Disturbe cells in Game of Life
+
+
+
+## Compile & Run
+### Create the build directory (if not already there)
+mkdir -p build
+cd build
+### Run cmake to configure the build system
+cmake ..
+### Build the project
+cmake --build .
+#### Or, if you prefer make directly:
+make
+### Run your program
+./your_executable_name
+
+
+
 
 
 
