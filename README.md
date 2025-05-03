@@ -2,7 +2,7 @@
 
 ## Ubuntu 24.01
 
-### Needs:ImGui, GLUT, CUDA, and OpenGL 
+### Needs: ImGui, GLUT, CUDA, and OpenGL 
 * IMGUI folder is empty. Create a new one
 * Delete folder
 * from terminal go to /sim

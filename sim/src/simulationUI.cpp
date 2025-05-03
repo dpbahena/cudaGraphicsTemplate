@@ -30,7 +30,7 @@ void SimulationUI::render(CUDAHandler &sim)
         }
         ImGui::PopStyleColor();
         // Combo for Tree Display Mode
-        const char* options[] = { "Grid", "Vertical", "Horizontal", "Checkered", "Diagonal", "X-shape", "Circle", "Spiral", "Border", "Doble border", "Rings", "Radial", "Animated Beams"};
+        const char* options[] = { "Grid", "Vertical", "Horizontal", "Checkered", "Diagonal", "X-shape", "Circle", "Spiral", "Border", "Doble border", "Rings", "Radial", "Animated Beams", "Diagonals Grid", "Full Grid"};
         static int selectedOption = sim.option; 
 
         if (ImGui::Combo("Game of Life Pattern", &selectedOption, options, IM_ARRAYSIZE(options))) {
@@ -44,14 +44,20 @@ void SimulationUI::render(CUDAHandler &sim)
         }
         if (sim.option == 10 ) {
             ImGui::SliderFloat("Spacing", &sim.ringSpacing, 5.0f,100.0f);
-            ImGui::SliderFloat("Thickness", &sim.thickness, 1.0f,10.0f);
+            ImGui::SliderFloat("Thickness", &sim.thickness, 1.0f,20.0f);
         }
         if (sim.option == 7) {
-            ImGui::SliderFloat("Frequency", &sim.armFrequency, 5.0f,100.0f);
-            ImGui::SliderFloat("spiralSpacing", &sim.spiralSpacing, 5.0f,100.0f);
-            ImGui::SliderFloat("armCount", &sim.armCount, 5.0f, 50.0f);
-            ImGui::SliderFloat("Turns", &sim.turns, 1.0f, 20.0f);
-            ImGui::SliderFloat("Thickness", &sim.thickness, 1.0f,10.0f);
+            ImGui::SliderFloat("Spacing", &sim.spacing, 5.0f,70.0f);
+            ImGui::SliderFloat("Thickness", &sim.thickness, 1.0f,20.0f);
+        }
+        if (sim.option == 13) {
+            ImGui::SliderInt("BlockSize", &sim.blockSize, 5.0f,70.0f);
+            ImGui::SliderInt("Band", &sim.band, 1.0f,20.0f);
+        }
+        if (sim.option == 14) {
+            ImGui::SliderInt("BlockSize", &sim.blockSize, 5.0f,70.0f);
+            ImGui::SliderInt("DiagonalBand", &sim.diagonalBand, 1.0f,20.0f);
+            ImGui::SliderInt("Border", &sim.border, 1.0f,20.0f);
         }
         ImGui::Separator;
         ImGui::Text("Total Cells: %d", (int)sim.gamelife.size());

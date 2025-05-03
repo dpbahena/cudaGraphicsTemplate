@@ -104,12 +104,16 @@ class CUDAHandler {
         float widthFactor = 0.1f;
         // Option 7 & 10  : concentric Rings    
         float ringSpacing = 5.0f;
-        float thickness = 1.5f;
+        float thickness = 4.5f;
         // Option 7 : Spiral
-        float armFrequency = 5.0f;
-        float spiralSpacing = 6.0f;
-        float armCount = 5.0f;
-        float turns = 3.0;
+        float spacing = 60.0f;
+        // Option 13 : diagonal grid
+        int blockSize = 10;
+        int band = 1;
+        // Option 14: full grid
+        int border = 3;
+        int diagonalBand = 1;
+
 
   
 

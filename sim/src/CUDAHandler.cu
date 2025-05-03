@@ -249,25 +249,40 @@ void CUDAHandler::updateDraw(float dt)
     bool ringSpacingJustChaged = (ringSpacing != previousringSpacing);
     previousringSpacing = ringSpacing;
 
-    static float previousarmFrequency = armFrequency;
-    bool armFrequencyJustChaged = (armFrequency != previousarmFrequency);
-    previousarmFrequency = armFrequency;
+    static float previousspacing = spacing;
+    bool spacingJustChaged = (spacing != previousspacing);
+    previousspacing = spacing;
 
-    static float previousarmCount = armCount;
-    bool armCountJustChaged = (armCount != previousarmCount);
-    previousarmCount = armCount;
+    static int previousblockSize = blockSize;
+    bool blockSizeJustChaged = (blockSize != previousblockSize);
+    previousblockSize = blockSize;
 
-    static float previousspiralSpacing = spiralSpacing;
-    bool spiralSpacingJustChaged = (spiralSpacing != previousspiralSpacing);
-    previousspiralSpacing = spiralSpacing;
+    static int previousband = band;
+    bool bandJustChaged = (band != previousband);
+    previousband = band;
 
-    static float previousturns = turns;
-    bool turnsJustChaged = (turns != previousturns);
-    previousturns = turns;
+    static int previousdiagonalBand = diagonalBand;
+    bool diagonalBandJustChaged = (diagonalBand != previousdiagonalBand);
+    previousdiagonalBand = diagonalBand;
+
+    static int previousborder = border;
+    bool borderJustChaged = (border != previousborder);
+    previousborder = border;
 
 
-
-    if (gamelife.empty() || optionJustChaged || widthFactorJustChaged || gridSizeJustChaged || thicknessJustChaged || ringSpacingJustChaged || armFrequencyJustChaged || armCountJustChaged || spiralSpacingJustChaged || turnsJustChaged) {
+    if (gamelife.empty() || 
+        optionJustChaged || 
+        widthFactorJustChaged || 
+        gridSizeJustChaged || 
+        thicknessJustChaged || 
+        ringSpacingJustChaged || 
+        spacingJustChaged || 
+        bandJustChaged || 
+        blockSizeJustChaged ||
+        bandJustChaged ||
+        diagonalBandJustChaged ||
+        borderJustChaged ) 
+    {
         framesCount = 0;
         initGameLife();
     } 
@@ -661,17 +676,15 @@ void CUDAHandler::setGroupOfParticles(int totalParticles, int2 ratio, bool ancho
                     angle = angle < 0 ? angle + 2.0f * M_PI : angle;
                 
                     // Parameters
-                    // float turns = 3.0f;          // Number of spiral turns
-                    // float spacing = 5.0f;        // Spiral arm spacing
-                    // float thickness = 2.5f;      // Band thickness
+                    // float spacing = 6.0f;        // radial spacing per full rotation (~coil tightness)
+                    // float thickness = 2.5f;      // thickness of the spiral band
                 
-                    // Clockwise spiral (original)
-                    float r_cw = angle * spiralSpacing * turns;
+                    // Spiral formula: r = spacing * theta
+                    float r_cw = angle * spacing;
                     float diff_cw = fabs(dist - r_cw);
                 
-                    // Counter-clockwise spiral: mirror by flipping angle
-                    float angle_ccw = 2.0f * M_PI - angle;
-                    float r_ccw = angle_ccw * spiralSpacing * turns;
+                    // Opposite spiral
+                    float r_ccw = (2.0f * M_PI - angle) * spacing;
                     float diff_ccw = fabs(dist - r_ccw);
                 
                     if (diff_cw < thickness || diff_ccw < thickness) {
@@ -683,9 +696,6 @@ void CUDAHandler::setGroupOfParticles(int totalParticles, int2 ratio, bool ancho
                     }
                     break;
                 }
-                    
-                    
-                    
                 case 8: { // border
                     int border = 50;  // thickness of border
                     if (r < border || r >= rows - border || c < border || c >= cols - border) {
@@ -778,6 +788,74 @@ void CUDAHandler::setGroupOfParticles(int totalParticles, int2 ratio, bool ancho
                     }
                     break;
                 }
+            case 13: {
+                // int blockSize = 6;      // size of each square block
+                // int band = 1;           // diagonal thickness
+            
+                int blockRow = r / blockSize;
+                int blockCol = c / blockSize;
+            
+                int localR = r % blockSize;
+                int localC = c % blockSize;
+            
+                // Diagonal type: choose one or alternate
+                bool useForwardSlash = true;  // true = '/', false = '\'
+            
+                // Optional: alternate slashes like a checker
+                // if ((blockRow + blockCol) % 2 == 0) useForwardSlash = true;
+                // else useForwardSlash = false;
+            
+                bool isDiagonal = false;
+            
+                if (useForwardSlash) {
+                    isDiagonal = abs(localR + localC - (blockSize - 1)) <= band;
+                } else {
+                    isDiagonal = abs(localR - localC) <= band;
+                }
+            
+                if (isDiagonal) {
+                    gl.alive = gl.next = true;
+                    gl.color = ORANGE;
+                } else {
+                    gl.alive = gl.next = false;
+                    gl.color = TAN;
+                }
+                break;
+            }
+        case 14: {
+            // int blockSize = 6;  // size of each square
+            // int border = 1;     // thickness of grid lines
+            // int diagonalBand = 1;  // diagonal thickness
+        
+            int blockRow = r / blockSize;
+            int blockCol = c / blockSize;
+        
+            int localR = r % blockSize;
+            int localC = c % blockSize;
+        
+            bool isBorder = (localR < border || localR >= blockSize - border ||
+                                localC < border || localC >= blockSize - border);
+        
+            // Diagonal type: '/' or '\' or alternating
+            bool useForwardSlash = ((blockRow + blockCol) % 2 == 0);  // alternate per tile
+        
+            bool isDiagonal = false;
+            if (useForwardSlash) {
+                isDiagonal = abs(localR + localC - (blockSize - 1)) <= diagonalBand;
+            } else {
+                isDiagonal = abs(localR - localC) <= diagonalBand;
+            }
+        
+            if (isBorder || isDiagonal) {
+                gl.alive = gl.next = true;
+                gl.color = make_uchar4(255, 200, 50, 255);  // gold-orange
+            } else {
+                gl.alive = gl.next = false;
+                gl.color = make_uchar4(20, 20, 20, 255);  // dark background
+            }
+            break;
+        }
+            
                 
                 
                     
