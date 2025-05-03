@@ -2,9 +2,9 @@
 
 ### Needs:ImGui, GLUT, CUDA, and OpenGL 
 * IMGUI folder is empty. Create a new one
-** Delete folder
-** from terminal go to /sim
-** git clone https://github.com/ocornut/imgui.git
+* Delete folder
+* from terminal go to /sim
+* git clone https://github.com/ocornut/imgui.git
 
 
  * C/C++ Themes
