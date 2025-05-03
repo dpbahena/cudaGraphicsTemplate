@@ -7,16 +7,6 @@
 * git clone https://github.com/ocornut/imgui.git
 
 
- * C/C++ Themes
- * C/C++ IntelliSense
- * C/C++ Extension Pack
- * CMake Tools
- * Makefile Tools
- * Remote Explorer
- * Remote -SSH
- 
-
-
 ## Pan & Zoom
 * Pan: SHIFT + Left Mouse
 * Zoom: SHIFT + Wheel Mouse
