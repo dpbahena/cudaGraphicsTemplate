@@ -1,5 +1,7 @@
 # Game of Life
 
+## Ubuntu 24.01
+
 ### Needs:ImGui, GLUT, CUDA, and OpenGL 
 * IMGUI folder is empty. Create a new one
 * Delete folder
