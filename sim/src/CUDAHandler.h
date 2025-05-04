@@ -11,17 +11,7 @@
 #include <cuda_gl_interop.h>
 #include <vector>
 #include <string>
-
-
-// Shortcuts for nv::vec types
-// typedef nv::vec2<float> vec2f;
-// typedef Vec2Wrapper vec2f;
-// typedef nv::vec3<float> vec3f;
-// typedef nv::vec4<float> vec4f;
-
-// typedef nv::vec2<int> vec2i;
-// typedef nv::vec3<int> vec3i;
-// typedef nv::vec4<int> vec4i;
+#include <tuple> // For std::tie
 
 struct GameLife{
 
@@ -38,6 +28,28 @@ enum ToolMode {
     DRAG = 1,
     TEAR = 2,
     ACTIVE = 3
+};
+
+struct Settings {
+    int option = 0;
+    float widthFactor = 1.0f;
+    int gridSize = 10;
+    float thickness = 1.0f;
+    float ringSpacing = 1.0f;
+    float spacing = 1.0f;
+    int band = 0;
+    int blockSize = 32;
+    int diagonalBand = 0;
+    int border = 1;
+
+    bool operator!=(const Settings& other) const {
+        return std::tie(option, widthFactor, gridSize, thickness,
+                        ringSpacing, spacing, band, blockSize,
+                        diagonalBand, border) !=
+               std::tie(other.option, other.widthFactor, other.gridSize, other.thickness,
+                        other.ringSpacing, other.spacing, other.band, other.blockSize,
+                        other.diagonalBand, other.border);
+    }
 };
 
 class CUDAHandler {

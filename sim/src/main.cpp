@@ -106,8 +106,7 @@ int main(int argc, char** argv) {
     // Setup ImGui
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
-    // ImGuiIO& io = ImGui::GetIO();
-    // io.IniFilename = NULL; // Don't save layout file
+   
 
     ImGui_ImplGLUT_Init();
     ImGui_ImplGLUT_InstallFuncs();

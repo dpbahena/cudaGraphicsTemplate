@@ -229,71 +229,37 @@ void CUDAHandler::updateDraw(float dt)
     this->dt = dt;
     framesCount++;
 
-    static int previousOption = option;
-    bool optionJustChaged = (option != previousOption);
-    previousOption = option;
 
-    static float previousWidthFactor = widthFactor;
-    bool widthFactorJustChaged = (widthFactor != previousWidthFactor);
-    previousWidthFactor = widthFactor;
-
-    static int previousgridSize = gridSize;
-    bool gridSizeJustChaged = (gridSize != previousgridSize);
-    previousgridSize = gridSize;
-
-    static float previousthickness = thickness;
-    bool thicknessJustChaged = (thickness != previousthickness);
-    previousthickness = thickness;
-
-    static float previousringSpacing = ringSpacing;
-    bool ringSpacingJustChaged = (ringSpacing != previousringSpacing);
-    previousringSpacing = ringSpacing;
-
-    static float previousspacing = spacing;
-    bool spacingJustChaged = (spacing != previousspacing);
-    previousspacing = spacing;
-
-    static int previousblockSize = blockSize;
-    bool blockSizeJustChaged = (blockSize != previousblockSize);
-    previousblockSize = blockSize;
-
-    static int previousband = band;
-    bool bandJustChaged = (band != previousband);
-    previousband = band;
-
-    static int previousdiagonalBand = diagonalBand;
-    bool diagonalBandJustChaged = (diagonalBand != previousdiagonalBand);
-    previousdiagonalBand = diagonalBand;
-
-    static int previousborder = border;
-    bool borderJustChaged = (border != previousborder);
-    previousborder = border;
-
-
-    if (gamelife.empty() || 
-        optionJustChaged || 
-        widthFactorJustChaged || 
-        gridSizeJustChaged || 
-        thicknessJustChaged || 
-        ringSpacingJustChaged || 
-        spacingJustChaged || 
-        bandJustChaged || 
-        blockSizeJustChaged ||
-        bandJustChaged ||
-        diagonalBandJustChaged ||
-        borderJustChaged ) 
-    {
-        framesCount = 0;
-        initGameLife();
-    } 
+    static Settings previousSettings;
+    Settings currentSettings = {
+        .option = option,
+        .widthFactor = widthFactor,
+        .gridSize = gridSize,
+        .thickness = thickness,
+        .ringSpacing = ringSpacing,
+        .spacing = spacing,
+        .band = band,
+        .blockSize = blockSize,
+        .diagonalBand = diagonalBand,
+        .border = border
+    };
     
 
+    if (gamelife.empty() || currentSettings != previousSettings) {
+        framesCount = 0;
+        initGameLife();
+        previousSettings = currentSettings;
+    }
+    
+    
     // GameLife* d_gameLife;
     // checkCuda(cudaMalloc(&d_gameLife, gamelife.size() * sizeof(GameLife)));
     // checkCuda(cudaMemcpy(d_gameLife, gamelife.data(), gamelife.size() * sizeof(GameLife), cudaMemcpyHostToDevice));
     
     
-    if(startSimulation) activateGameLife(d_gameLife);
+    if(startSimulation) {
+        activateGameLife(d_gameLife);
+    }
     // checkCuda(cudaMemcpy(gamelife.data(), d_gameLife, gamelife.size() * sizeof(GameLife), cudaMemcpyDeviceToHost));
     
 

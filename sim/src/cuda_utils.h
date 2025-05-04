@@ -59,3 +59,11 @@ inline int random_int(int min, int max) {
     std::uniform_int_distribution<int> distribution(min, max);
     return distribution(generator);
 }
+
+template <typename T>
+bool justChanged(const T& currentValue) {
+    static T previousValue = currentValue;
+    bool changed = (currentValue != previousValue);
+    previousValue = currentValue;
+    return changed;
+}
