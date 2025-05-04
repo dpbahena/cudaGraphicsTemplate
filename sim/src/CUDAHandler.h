@@ -27,6 +27,7 @@ struct GameLife{
 
     vec2 position;
     int radius;
+    float glowExtent;
     bool alive;
     bool next;
     int aliveNeighbors;
@@ -76,6 +77,7 @@ class CUDAHandler {
 
 
         // Draw shapes
+        void drawGroupOfGlowingCircles(cudaSurfaceObject_t &surface, GameLife* &d_gameLife);
         void drawGlowingCircle(cudaSurfaceObject_t &surface, vec2 position, float radius, float glowExtent, uchar4 color);
         void drawRing(cudaSurfaceObject_t &surface, vec2 position, float radius, float thickness, uchar4 color);
         
@@ -83,19 +85,21 @@ class CUDAHandler {
         vec2 topLeft;
         bool startSimulation = false;
         int option = 6;
+        float glowExtent = 1.0f;
         
         GameLife* d_gameLife; // for GPU operations
         int gridRows, gridCols;
         std::vector<GameLife> gamelife;
         int numberOfParticles = 1000000;
         float particleRadius = .5f;
-        float restLength = 1;
+        float restLength = 1.0f;
         void activateGameLife();
         void activateGameLife(GameLife* &d_gameLife);
         void initGameLife();
         void setGroupOfParticles(int totalParticles, int2 ratio, bool anchors = 0);
         int2 calculateGrid(int n, int a, int b);
         void drawGameLife(cudaSurfaceObject_t &surface, GameLife* &d_gameLife);
+        void changeGlow(cudaSurfaceObject_t &surface, GameLife* &d_gameLife);
         void disturbeGameLife(vec2 mousePosition);
 
         // options 0 Grid 

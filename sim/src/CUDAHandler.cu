@@ -2,6 +2,100 @@
 #include "cudaKernels.cuh"
 #include "cuda_utils.h"
 
+__global__ void addGlow_kernel(cudaSurfaceObject_t surface, GameLife* particles, int numberParticles, float glowExtent) 
+{
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= numberParticles) return;
+    particles[i].glowExtent = glowExtent;
+}
+__global__ void drawGlowParticles_kernel(
+    cudaSurfaceObject_t surface,
+    GameLife* particles,
+    int numberParticles,
+    int width, int height,
+    float zoom, float panX, float panY
+) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= numberParticles || !particles[i].alive) return;
+
+    GameLife gl = particles[i];
+
+    vec2 pos = gl.position;
+    float radius = gl.radius * zoom;
+
+    int x0 = (int)((pos.x + panX) * zoom + width * 0.5f);
+    int y0 = (int)((pos.y + panY) * zoom + height * 0.5f);
+
+    drawGlowingFilledCircle(surface, x0, y0, radius, gl.color, gl.glowExtent, width, height);
+}
+
+__global__ void drawParticles_kernel(cudaSurfaceObject_t surface, GameLife* particles, int numberParticles, int width, int height, float zoom, float panX, float panY){
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= numberParticles || !particles[i].alive) return;
+    GameLife gl = particles[i];
+    vec2 pos = gl.position;
+    float radius = gl.radius * zoom;
+    int x0 = (int)(width / 2.0f + (pos.x + panX) * zoom);
+    int y0 = (int)(height / 2.0f + (pos.y + panY) * zoom);
+    
+    drawFilledCircle(surface, x0, y0, radius, gl.color, width, height);
+}
+__global__ void drawGroupOfGlowingCircles_kernel(
+    cudaSurfaceObject_t surface,
+    GameLife* gameLife, int numOfCells,
+    int width, int height, float zoom, float panX, float panY
+) 
+{
+    int x = blockIdx.x * blockDim.x + threadIdx.x;
+    int y = blockIdx.y * blockDim.y + threadIdx.y;
+
+    if (x >= width || y >= height) return;
+
+    uchar4 finalColor = make_uchar4(0, 0, 0, 0);
+
+    // Loop over all alive GameLife cells
+    for (int i = 0; i < numOfCells; ++i) {
+        GameLife cell = gameLife[i];
+        if (!cell.alive) continue;  // Optional skip
+
+        // Transform world center to screen coordinates
+        float screenCX = (cell.position.x + panX) * zoom + width * 0.5f;
+        float screenCY = (cell.position.y + panY) * zoom + height * 0.5f;
+
+        float dx = x - screenCX;
+        float dy = y - screenCY;
+        float distSquared = dx * dx + dy * dy;
+
+        float glowRadius = cell.radius * cell.glowExtent * zoom;
+        float glowRadiusSquared = glowRadius * glowRadius;
+
+        if (distSquared <= glowRadiusSquared) {
+            float normalizedSquared = distSquared / glowRadiusSquared;
+            float intensity = 1.0f - normalizedSquared;
+            intensity = fmaxf(0.0f, fminf(1.0f, intensity));
+
+            finalColor.x = min(255, finalColor.x + (unsigned char)(cell.color.x * intensity));
+            finalColor.y = min(255, finalColor.y + (unsigned char)(cell.color.y * intensity));
+            finalColor.z = min(255, finalColor.z + (unsigned char)(cell.color.z * intensity));
+            finalColor.w = min(255, finalColor.w + (unsigned char)(cell.color.w * intensity));
+        }
+    }
+
+    // Read and blend with the surface
+    uchar4 oldColor;
+    surf2Dread(&oldColor, surface, x * sizeof(uchar4), y);
+
+    uchar4 blendedColor = make_uchar4(
+        min(255, oldColor.x + finalColor.x),
+        min(255, oldColor.y + finalColor.y),
+        min(255, oldColor.z + finalColor.z),
+        min(255, oldColor.w + finalColor.w)
+    );
+
+    surf2Dwrite(blendedColor, surface, x * sizeof(uchar4), y);
+}
+
+
 // 1D threads
 __global__ void disturbeGameLife_kernel(GameLife* gameLife, float mousePosX, float mousePosY, int numberOfCells, float mouseRadius)
 {
@@ -151,17 +245,7 @@ __global__ void disturbGameLife_kernel_windowed_shared(
 
 
 
-__global__ void drawParticles_kernel(cudaSurfaceObject_t surface, GameLife* particles, int numberParticles, int width, int height, float zoom, float panX, float panY){
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i >= numberParticles || !particles[i].alive) return;
-    GameLife gl = particles[i];
-    vec2 pos = gl.position;
-    float radius = gl.radius * zoom;
-    int x0 = (int)(width / 2.0f + (pos.x + panX) * zoom);
-    int y0 = (int)(height / 2.0f + (pos.y + panY) * zoom);
-    
-    drawFilledCircle(surface, x0, y0, radius, gl.color, width, height);
-}
+
 
 __global__ void commitNextState_kernel(GameLife* gamelife, int totalParticles) {
     int i = threadIdx.x + blockIdx.x * blockDim.x;
@@ -253,6 +337,10 @@ void CUDAHandler::updateDraw(float dt)
     bool spacingJustChaged = (spacing != previousspacing);
     previousspacing = spacing;
 
+    static float previousglowExtent = glowExtent;
+    bool glowExtentJustChaged = (glowExtent != previousglowExtent);
+    previousglowExtent = glowExtent;
+
     static int previousblockSize = blockSize;
     bool blockSizeJustChaged = (blockSize != previousblockSize);
     previousblockSize = blockSize;
@@ -281,12 +369,15 @@ void CUDAHandler::updateDraw(float dt)
         blockSizeJustChaged ||
         bandJustChaged ||
         diagonalBandJustChaged ||
-        borderJustChaged ) 
+        borderJustChaged //|| 
+        // glowExtentJustChaged
+     ) 
     {
         framesCount = 0;
         initGameLife();
     } 
     
+    cudaSurfaceObject_t surface = MapSurfaceResouse();    
 
     // GameLife* d_gameLife;
     // checkCuda(cudaMalloc(&d_gameLife, gamelife.size() * sizeof(GameLife)));
@@ -297,7 +388,8 @@ void CUDAHandler::updateDraw(float dt)
     // checkCuda(cudaMemcpy(gamelife.data(), d_gameLife, gamelife.size() * sizeof(GameLife), cudaMemcpyDeviceToHost));
     
 
-    cudaSurfaceObject_t surface = MapSurfaceResouse(); 
+    
+    changeGlow(surface, d_gameLife); 
    
     clearGraphicsDisply(surface, DARK);
 
@@ -307,10 +399,10 @@ void CUDAHandler::updateDraw(float dt)
     // drawGlowingCircle_kernel<<<1, 1>>>(surface, width, height, center.x, center.y, 500, RED_MERCURY, 1.5f, zoom, panX, panY);
     // drawRing(surface, center, 500, 4, BLUE_PLANET);
 
-    // drawGlowingCircle(surface, center, 500, 1.5, RED_MERCURY );
+    // drawGlowingCircle(surface, center, 500, 1.5, GREEN );
 
     
-
+    // drawGroupOfGlowingCircles(surface, d_gameLife);
     drawGameLife(surface, d_gameLife);
 
     checkCuda(cudaPeekAtLastError());
@@ -330,6 +422,20 @@ void CUDAHandler::clearGraphicsDisply(cudaSurfaceObject_t &surface, uchar4 color
     dim3 clearBlock(threads, threads);
     dim3 clearGrid((width + clearBlock.x -1) / clearBlock.x, (height + clearBlock.y - 1) / clearBlock.y);
     clearSurface_kernel<<<clearGrid, clearBlock>>>(surface, width, height, color);
+}
+
+void CUDAHandler::drawGroupOfGlowingCircles(cudaSurfaceObject_t &surface, GameLife* &d_gameLife)
+{
+
+    dim3 blockSize(16, 16);
+    dim3 gridSize((width + blockSize.x - 1) / blockSize.x,
+                (height + blockSize.y - 1) / blockSize.y);
+
+    drawGroupOfGlowingCircles_kernel<<<gridSize, blockSize>>>(
+        surface,
+        d_gameLife, gamelife.size(),
+        width, height, zoom, panX, panY
+    );
 }
 
 void CUDAHandler::drawGlowingCircle(cudaSurfaceObject_t &surface, vec2 position, float radius, float glowExtent, uchar4 color)
@@ -486,6 +592,13 @@ void CUDAHandler::drawGameLife(cudaSurfaceObject_t &surface, GameLife *&d_gameLi
     drawParticles_kernel<<<blocks, threads>>>(surface, d_gameLife, gamelife.size(), width, height, zoom, panX, panY);
 }
 
+void CUDAHandler::changeGlow(cudaSurfaceObject_t &surface, GameLife *&d_gameLife)
+{
+    int threads = 256;
+    int blocks = (gamelife.size() + threads -1 ) / threads;
+    addGlow_kernel<<<blocks, threads>>>(surface, d_gameLife, gamelife.size(), glowExtent);
+}
+
 void CUDAHandler::disturbeGameLife(vec2 mousePosition)
 {
     // for (int i = 0; i < gamelife.size(); ++i) {
@@ -575,6 +688,7 @@ void CUDAHandler::setGroupOfParticles(int totalParticles, int2 ratio, bool ancho
             GameLife gl;
             gl.position = vec2(x,y);
             gl.radius = particleRadius;
+            gl.glowExtent = glowExtent;
             switch(option){
                 case 0:   // grid
                     

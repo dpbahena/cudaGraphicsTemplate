@@ -33,9 +33,12 @@ void SimulationUI::render(CUDAHandler &sim)
         const char* options[] = { "Grid", "Vertical", "Horizontal", "Checkered", "Diagonal", "X-shape", "Circle", "Spiral", "Border", "Doble border", "Rings", "Radial", "Animated Beams", "Diagonals Grid", "Full Grid"};
         static int selectedOption = sim.option; 
 
+    
+
         if (ImGui::Combo("Game of Life Pattern", &selectedOption, options, IM_ARRAYSIZE(options))) {
             sim.option = selectedOption;
         }
+        ImGui::SliderFloat("Glow", &sim.glowExtent, 1.0f, 5.1f);
         if (sim.option == 0) { // grid
             ImGui::SliderInt("Grid Size", &sim.gridSize, 2, 100);
         } 

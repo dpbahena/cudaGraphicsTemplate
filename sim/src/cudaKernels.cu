@@ -208,7 +208,7 @@ __global__ void drawGlowingCircle_kernel(cudaSurfaceObject_t surface, int width,
     // int rSquared = radius * radius;
     // float glowRadius = glowExtent * radius;
     // float glowRadiusSquared = glowRadius * glowRadius;
-    float falloffPower = 2.f;
+    float falloffPower = 2.0f;
 
     // Instead of sqrt(distSquared), compare distSquared directly (faster than fsqrt)
     float glowRadiusSquared = (glowExtent * radius) * (glowExtent * radius);
@@ -373,3 +373,58 @@ __global__ void drawRing_kernel(cudaSurfaceObject_t surface, int width, int heig
     
 
 
+    __device__ void drawGlowingFilledCircle(
+        cudaSurfaceObject_t surface,
+        int cx, int cy,
+        float radius,
+        uchar4 color,
+        float glowExtent,
+        int width, int height
+    ) {
+        // int glowRadius = radius * glowExtent;
+        int glowRadius = max(1, (int)ceilf(radius * glowExtent));
+
+
+        int rSquared = glowRadius * glowRadius;
+    
+        int xmin = max(0, cx - glowRadius);
+        int xmax = min(width - 1, cx + glowRadius);
+        int ymin = max(0, cy - glowRadius);
+        int ymax = min(height - 1, cy + glowRadius);
+    
+        for (int y = ymin; y <= ymax; ++y) {
+            for (int x = xmin; x <= xmax; ++x) {
+                int dx = x - cx;
+                int dy = y - cy;
+                int distSquared = dx * dx + dy * dy;
+    
+                if (distSquared > rSquared) continue;
+    
+                float normalizedSquared = (float)distSquared / (float)rSquared;
+                float intensity = 1.0f - normalizedSquared;
+                // float intensity = (1.0f - normalizedSquared) * clamp(radius / 1.0f, 0.2f, 1.0f);
+
+                intensity = fmaxf(0.0f, fminf(1.0f, intensity));
+    
+                uchar4 newColor = make_uchar4(
+                    min(255, (int)(color.x * intensity)),
+                    min(255, (int)(color.y * intensity)),
+                    min(255, (int)(color.z * intensity)),
+                    (unsigned char)(color.w * intensity)
+                );
+    
+                uchar4 oldColor;
+                surf2Dread(&oldColor, surface, x * sizeof(uchar4), y);
+    
+                uchar4 blendedColor = make_uchar4(
+                    min(255, oldColor.x + newColor.x),
+                    min(255, oldColor.y + newColor.y),
+                    min(255, oldColor.z + newColor.z),
+                    min(255, oldColor.w + newColor.w)
+                );
+    
+                surf2Dwrite(blendedColor, surface, x * sizeof(uchar4), y);
+            }
+        }
+    }
+    
