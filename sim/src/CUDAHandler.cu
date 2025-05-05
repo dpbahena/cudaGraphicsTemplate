@@ -161,7 +161,7 @@ __global__ void drawParticles_kernel(cudaSurfaceObject_t surface, GameLife* part
     int y0 = (int)(height / 2.0f + (pos.y + panY) * zoom);
     
     drawFilledCircle(surface, x0, y0, radius, gl.color, width, height);
-}
+} 
 
 __global__ void commitNextState_kernel(GameLife* gamelife, int totalParticles) {
     int i = threadIdx.x + blockIdx.x * blockDim.x;
@@ -171,36 +171,75 @@ __global__ void commitNextState_kernel(GameLife* gamelife, int totalParticles) {
     gamelife[i].next = false;
 }
 
+// __global__ void activate_gameOfLife_kernel(GameLife* gamelife, int totalParticles, int gridRows, int gridCols) {
+//     int i = threadIdx.x + blockIdx.x * blockDim.x;
+//     if (i >= totalParticles) return;
+  
+//     int row = i / gridCols;
+//     int col = i % gridCols;
+//     int aliveCount = 0;
+    
+//     for (int dr = -1; dr <= 1; ++dr) {
+//         for (int dc = -1; dc <= 1; ++dc) {
+//             if (dr == 0 && dc == 0) continue; // skip self
+
+//             int nr = row + dr;
+//             int nc = col + dc;
+//             // * Check if neighbors are within the grid bounds
+//             if (nr >= 0 && nr < gridRows && nc >= 0 && nc < gridCols) {
+//                 int j = nr * gridCols + nc;
+//                 // * Check if neighbors are alive and count them
+//                 if (gamelife[j].alive) aliveCount++;
+//             }
+//         }
+//     }
+    
+//     // Apply rules
+//     if (gamelife[i].alive )
+//         gamelife[i].next = (aliveCount == 2 || aliveCount == 3); // stays alive or not
+//     else {
+//         gamelife[i].next = (aliveCount == 3);
+//     }
+// }
+
+__device__ float sigmoid(float x) {
+    return 1.0f / (1.0f + expf(-x));
+}
+
 __global__ void activate_gameOfLife_kernel(GameLife* gamelife, int totalParticles, int gridRows, int gridCols) {
     int i = threadIdx.x + blockIdx.x * blockDim.x;
     if (i >= totalParticles) return;
-  
+
     int row = i / gridCols;
     int col = i % gridCols;
-    int aliveCount = 0;
-    
+
+    float neighborSum = 0.0f;
+
+    // Example kernel weights (symmetric, Gaussian-like)
+    const float kernel[3][3] = {
+        {0.5f, 1.0f, 0.5f},
+        {1.0f, 0.0f, 1.0f},  // center weight is ignored
+        {0.5f, 1.0f, 0.5f}
+    };
+
     for (int dr = -1; dr <= 1; ++dr) {
         for (int dc = -1; dc <= 1; ++dc) {
-            if (dr == 0 && dc == 0) continue; // skip self
+            if (dr == 0 && dc == 0) continue;
 
             int nr = row + dr;
             int nc = col + dc;
-            // * Check if neighbors are within the grid bounds
             if (nr >= 0 && nr < gridRows && nc >= 0 && nc < gridCols) {
                 int j = nr * gridCols + nc;
-                // * Check if neighbors are alive and count them
-                if (gamelife[j].alive) aliveCount++;
+                neighborSum += (gamelife[j].alive ? 1.0f : 0.0f) * kernel[dr + 1][dc + 1];
             }
         }
     }
-    
-    // Apply rules
-    if (gamelife[i].alive )
-        gamelife[i].next = (aliveCount == 2 || aliveCount == 3); // stays alive or not
-    else {
-        gamelife[i].next = (aliveCount == 3);
-    }
+
+    float threshold = 3.0f;  // similar to GoL but flexible
+    float probability = sigmoid(neighborSum - threshold);
+    gamelife[i].next = (probability > 0.5f);  // or experiment with stochastic: random() < probability
 }
+
 
 
 

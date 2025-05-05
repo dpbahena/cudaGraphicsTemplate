@@ -1,208 +1,86 @@
 #pragma once
-#include <math.h>
-#include <stdio.h>
+#include <cmath>
 #include <cuda_runtime.h>
 
+struct vec2 {
+    float x, y;
 
+    __host__ __device__ vec2() : x(0), y(0) {}
+    __host__ __device__ vec2(float n) : x(n), y(n) {}
+    __host__ __device__ vec2(float x, float y) : x(x), y(y) {}
 
+    __host__ __device__ float magSq() const { return x * x + y * y; }
+    __host__ __device__ float mag() const { return sqrtf(magSq()); }
 
-class Vec2 {
-    public:
-        float x, y;
-        __host__ __device__
-        Vec2() {}
-        __host__ __device__
-        Vec2(float v) : x(v), y(v) { };
-        __host__ __device__
-        Vec2 (float x, float y) : x(x), y(y){}
-        
-        __host__ __device__
-        Vec2& operator=(const Vec2& v)  {
-            x = v.x;
-            y = v.y;
-            return *this;
-        }
-        __host__ __device__
-        bool operator==(const Vec2& v) const {
-            return  (x == v.x && y == v.y);
-        }
+    __host__ __device__ vec2 normalized() const {
+        float m = mag();
+        return (m > 0.0f) ? vec2(x / m, y / m) : vec2(0.0f, 0.0f);
+    }
 
-        // bool operator!=(const Vec2& v) const {
-        //     return (x != v.x || y != v.y);
-        // }
-        __host__ __device__
-        bool operator!=(const Vec2& v) const {
-            return !(*this == v);  // Reuse operator==
-        }
-        __host__ __device__
-        Vec2 operator+(const Vec2& other) const {
-            return Vec2(other.x + x, other.y + y);
-        }
-        __host__ __device__
-        Vec2 operator-(const Vec2& other) const {
-            return Vec2(x - other.x, y - other.y);
-        }
-        __host__ __device__
-        Vec2 operator*(const float n) const {
-            return Vec2(x * n, y * n);
-        }
-        __host__ __device__
-        Vec2 operator/(const float n) {
-            return Vec2(x / n, y / n);
-        }
+    __host__ __device__ float dot(const vec2& other) const {
+        return x * other.x + y * other.y;
+    }
 
-        Vec2 operator-() const {   // negation
-            return Vec2(-x, -y);
-        };
-        __host__ __device__
-        Vec2& operator+=(const Vec2& other) {
-            x += other.x;
-            y += other.y;
-            return *this;
-        }
-        __host__ __device__
-        Vec2& operator-=(const Vec2& other) {
-            x -= other.x;
-            y -= other.y;
-            return *this;
-        }     
-        __host__ __device__
-        Vec2& operator*=(float n) {
-            x*=n;
-            y*=n;
-            return *this;
-        }
-        __host__ __device__
-        Vec2& operator/=(float n) {
-            x/=n;
-            y/=n;
-            return *this;
-        }
-        
-       
-        __host__ __device__
-        void scale(float s) {
-            x *= s;
-            y *= s;
-            
-        }
-        
-        // Vec2 rotate(const float a) const {
-        //     float angle = toRadians(a);
-        //     Vec2 vec{0,0};
-        //     vec.x = x * cos(angle) - y * sin(angle);
-        //     vec.y = x * sin(angle) + y * cos(angle);
-        //     return vec;
-        // }
-        __device__ __host__
-        float mag() const {
-            return sqrt(x*x + y*y);
-        }
+    __host__ __device__ float angleBetween(const vec2& other) const {
+        float d = dot(other);
+        float m = mag() * other.mag();
+        if (m == 0.0f) return 0.0f;
+        float cosTheta = fmaxf(fminf(d / m, 1.0f), -1.0f);
+        return acosf(cosTheta);
+    }
 
-        float magSquared() const {
-            return (x*x + y*y);
-        }
-        __host__ __device__
-        Vec2& normalize() {
-            float length = this->mag();
-            if (length != 0.0f) {
-                x /= length;
-                y /= length;
-            }
-            return *this;
-        }
+    __host__ __device__ vec2 perpendicular() const {
+        return vec2(-y, x);  // 90 degrees CCW
+    }
 
-        Vec2 unitVector() const {
-            float len = this->mag();
-            if (len != 0.0f)
-                return Vec2(x / len, y / len);
-            else
-                return Vec2(0.0,0.0);
-        }
+    __host__ __device__ vec2 operator+(const vec2& b) const { return vec2(x + b.x, y + b.y); }
+    __host__ __device__ vec2 operator-(const vec2& b) const { return vec2(x - b.x, y - b.y); }
+    __host__ __device__ vec2 operator*(float s) const { return vec2(x * s, y * s); }
+    __host__ __device__ vec2 operator/(float s) const { return vec2(x / s, y / s); }
+    __host__ __device__ vec2 operator+=(const vec2& other) { x += other.x; y += other.x; return *this; }
+    __host__ __device__ vec2 operator-=(const vec2& other) { x -= other.x; y -= other.x; return *this; }
+    __host__ __device__ vec2 operator*=(const float n) { x *= n; y *= n; return *this; }
+    __host__ __device__ vec2 operator/=(const float n) { x /= n; y /= n; return *this; }
 
-        Vec2 normal() const {
-            return Vec2(y, -x).normalize();
-        }
-        __host__ __device__
-        float dot(const Vec2& v) const {
-            return x * v.x + y * v.y;
-        }
-
-        float cross(Vec2& v) const {
-            return  (x * v.y - v.x * y);  // z-axis component only (determinant) - magnitud of the Z component
-        }
-
-        
-
-
-
-        static Vec2 add(Vec2 v1, Vec2 v2) {
-            return Vec2(v1.x + v2.x, v1.y + v2.y);
-        }
-        
-        // void log(std::string name){
-        //     printf("%s: {%f, %f}\n", name.c_str(), x, y);
-        // }
-
-        bool hasNaN() const {
-            return std::isnan(x) || std::isnan(y);
-        }
 };
-__host__ __device__
-inline Vec2 operator*(const float n, const Vec2 &v) {
-    return Vec2(v.x * n, v.y * n);
-}
 
+// ---- vec3 version ----
+struct vec3 {
+    float x, y, z;
 
+    __host__ __device__ vec3() : x(0), y(0), z(0) {}
+    __host__ __device__ vec3(float x, float y, float z) : x(x), y(y), z(z) {}
 
-class Vec3 {
-    public:
-        float x, y, z;
-        Vec3(){};
-        Vec3 (float x, float y, float z) : x(x), y(y), z(z){}
-        void add(Vec3 v) {
-            x += v.x;
-            y += v.y;
-            z += v.z;
-        }
-        void subtract(Vec3 v) {
-            x -= v.x;
-            y -= v.y;
-            z -= v.z;
-          
-        }
+    __host__ __device__ float magSq() const { return x * x + y * y + z * z; }
+    __host__ __device__ float mag() const { return sqrtf(magSq()); }
 
-        float mag() {
-            return sqrt(x*x + y*y + z*z);
-        }
+    __host__ __device__ vec3 normalized() const {
+        float m = mag();
+        return (m > 0.0f) ? vec3(x / m, y / m, z / m) : vec3(0.0f, 0.0f, 0.0f);
+    }
 
-        void scale(float s) {
-            x *= s;
-            y *= s;
-            z *= s;
-            
-        }
+    __host__ __device__ float dot(const vec3& b) const {
+        return x * b.x + y * b.y + z * b.z;
+    }
 
-        static Vec3 add(Vec3 v1, Vec3 v2) {
-            return Vec3(v1.x + v2.x, v1.y + v2.y, v1.z + v2.z);
-        }
+    __host__ __device__ vec3 cross(const vec3& b) const {
+        return vec3(
+            y * b.z - z * b.y,
+            z * b.x - x * b.z,
+            x * b.y - y * b.x
+        );
+    }
 
-        float dot(Vec3 v){
-            return x * v.x + y * v.y, z * v.z;
-        }
+    __host__ __device__ float angleBetween(const vec3& b) const {
+        float d = dot(b);
+        float m = mag() * b.mag();
+        if (m == 0.0f) return 0.0f;
+        float cosTheta = fmaxf(fminf(d / m, 1.0f), -1.0f);
+        return acosf(cosTheta);
+    }
 
-        Vec3 cross(Vec3& v){
-            return Vec3(
-                y * v.z - v.y * z,
-                x * v.z - v.x * z,
-                x * v.y - v.x * y
-            );
-
-        }
-
-        Vec3 normalize() {
-            float length = mag();
-            return Vec3(x/length, y/length, z/length);
-        }
-
+    __host__ __device__ vec3 operator+(const vec3& b) const { return vec3(x + b.x, y + b.y, z + b.z); }
+    __host__ __device__ vec3 operator-(const vec3& b) const { return vec3(x - b.x, y - b.y, z - b.z); }
+    __host__ __device__ vec3 operator*(float s) const { return vec3(x * s, y * s, z * s); }
+    __host__ __device__ vec3 operator/(float s) const { return vec3(x / s, y / s, z / s); }
 };
