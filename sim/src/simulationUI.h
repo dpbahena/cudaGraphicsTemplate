@@ -2,6 +2,13 @@
 
 class CUDAHandler;  // Just temporary declaration but necessary
 
+// float kernelMatrix[9] = {
+//     0.5f, 1.0f, 0.5f,
+//     1.0f, 0.0f, 1.0f,
+//     0.5f, 1.0f, 0.5f
+// };
+
+
 class SimulationUI {
     public:
 

@@ -30,12 +30,32 @@ void SimulationUI::render(CUDAHandler &sim)
         }
         ImGui::PopStyleColor();
         // Combo for Tree Display Mode
-        const char* options[] = { "Grid", "Vertical", "Horizontal", "Checkered", "Diagonal", "X-shape", "Circle", "Spiral", "Border", "Doble border", "Rings", "Radial", "Animated Beams", "Diagonals Grid", "Full Grid"};
+        const char* options[] = { "Grid", "Vertical", "Horizontal", "Checkered", "Diagonal", "X-shape", "Circle", "Spiral", "Border", "Doble border", "Rings", "Radial", "Animated Beams", "Diagonals Grid", "Full Grid", "Cellular Automata"};
         static int selectedOption = sim.option; 
 
         if (ImGui::Combo("Game of Life Pattern", &selectedOption, options, IM_ARRAYSIZE(options))) {
             sim.option = selectedOption;
         }
+        ImGui::SliderInt("Number of Particles", &sim.numberOfParticles, 10000, 2000000);
+        ImGui::SliderFloat("Radius", &sim.particleRadius, 0.1f, 30.f);
+        ImGui::SliderFloat("distance", &sim.restLength, .2f, 30.f);
+
+        int gameMode = static_cast<GameMode>(sim.gameMode);
+        ImGui::RadioButton("Game Of Life", &gameMode, gameOfLife); ImGui::SameLine();
+        ImGui::RadioButton("TanH", &gameMode, hyperbolicTanF); ImGui::SameLine();
+        ImGui::RadioButton("Sigmoid", &gameMode, sigmoidF); ImGui::SameLine();
+        ImGui::RadioButton("reLu", &gameMode, reLuF); ImGui::SameLine();
+        sim.gameMode = (GameMode)gameMode;
+        ImGui::NewLine();
+        if (gameMode == sigmoidF || gameMode == hyperbolicTanF || gameMode == reLuF) {
+            if (ImGui::CollapsingHeader("Convolution Kernel")) {
+                ImGui::SliderFloat("Sigmoid Threshold", &sim.sigmoidThreshold, 0.0f, 8.0f);
+                ImGui::SliderFloat("Edge Weight", &sim.kernelWeightEdge, 0.0f, 2.0f);
+                ImGui::SliderFloat("Corner Weight", &sim.kernelWeightCorner, 0.0f, 2.0f);
+                // Optional: ImGui::SliderFloat("Center Weight", &sim.kernelWeightCenter, 0.0f, 2.0f);
+            } 
+        }
+
         if (sim.option == 0) { // grid
             ImGui::SliderInt("Grid Size", &sim.gridSize, 2, 100);
         } 
@@ -58,6 +78,11 @@ void SimulationUI::render(CUDAHandler &sim)
             ImGui::SliderInt("BlockSize", &sim.blockSize, 5.0f,70.0f);
             ImGui::SliderInt("DiagonalBand", &sim.diagonalBand, 1.0f,20.0f);
             ImGui::SliderInt("Border", &sim.border, 1.0f,20.0f);
+        }
+        if (sim.option ==15) {
+            static int ruleSlider = 30;
+            ImGui::SliderInt("Cell Automata", &ruleSlider, 0, 255 );
+            sim.rule = static_cast<uint8_t>(ruleSlider);
         }
         ImGui::Separator;
         ImGui::Text("Total Cells: %d", (int)sim.gamelife.size());

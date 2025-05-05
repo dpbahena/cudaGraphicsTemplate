@@ -1,6 +1,14 @@
 #include "CUDAHandler.h"
 #include "cudaKernels.cuh"
+#include <curand_kernel.h>
 #include "cuda_utils.h"
+
+
+__global__ void init_random(unsigned int seed, curandState_t* states){
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    curand_init(seed, idx, 0, &states[idx]);
+}
+
 
 // 1D threads
 __global__ void disturbeGameLife_kernel(GameLife* gameLife, float mousePosX, float mousePosY, int numberOfCells, float mouseRadius)
@@ -171,42 +179,57 @@ __global__ void commitNextState_kernel(GameLife* gamelife, int totalParticles) {
     gamelife[i].next = false;
 }
 
-// __global__ void activate_gameOfLife_kernel(GameLife* gamelife, int totalParticles, int gridRows, int gridCols) {
-//     int i = threadIdx.x + blockIdx.x * blockDim.x;
-//     if (i >= totalParticles) return;
+__global__ void activate_gameOfLife_kernel(GameLife* gamelife, int totalParticles, int gridRows, int gridCols) {
+    int i = threadIdx.x + blockIdx.x * blockDim.x;
+    if (i >= totalParticles) return;
   
-//     int row = i / gridCols;
-//     int col = i % gridCols;
-//     int aliveCount = 0;
+    int row = i / gridCols;
+    int col = i % gridCols;
+    int aliveCount = 0;
     
-//     for (int dr = -1; dr <= 1; ++dr) {
-//         for (int dc = -1; dc <= 1; ++dc) {
-//             if (dr == 0 && dc == 0) continue; // skip self
+    for (int dr = -1; dr <= 1; ++dr) {
+        for (int dc = -1; dc <= 1; ++dc) {
+            if (dr == 0 && dc == 0) continue; // skip self
 
-//             int nr = row + dr;
-//             int nc = col + dc;
-//             // * Check if neighbors are within the grid bounds
-//             if (nr >= 0 && nr < gridRows && nc >= 0 && nc < gridCols) {
-//                 int j = nr * gridCols + nc;
-//                 // * Check if neighbors are alive and count them
-//                 if (gamelife[j].alive) aliveCount++;
-//             }
-//         }
-//     }
+            int nr = row + dr;
+            int nc = col + dc;
+            // * Check if neighbors are within the grid bounds
+            if (nr >= 0 && nr < gridRows && nc >= 0 && nc < gridCols) {
+                int j = nr * gridCols + nc;
+                // * Check if neighbors are alive and count them
+                if (gamelife[j].alive) aliveCount++;
+            }
+        }
+    }
     
-//     // Apply rules
-//     if (gamelife[i].alive )
-//         gamelife[i].next = (aliveCount == 2 || aliveCount == 3); // stays alive or not
-//     else {
-//         gamelife[i].next = (aliveCount == 3);
-//     }
-// }
+    // Apply rules
+    if (gamelife[i].alive )
+        gamelife[i].next = (aliveCount == 2 || aliveCount == 3); // stays alive or not
+    else {
+        gamelife[i].next = (aliveCount == 3);
+    }
+}
 
 __device__ float sigmoid(float x) {
     return 1.0f / (1.0f + expf(-x));
 }
 
-__global__ void activate_gameOfLife_kernel(GameLife* gamelife, int totalParticles, int gridRows, int gridCols) {
+__device__ float tanhMapped(float x) {
+    return 0.5f * (tanhf(x) + 1.0f);
+}
+
+__device__ float reluClamped(float x) {
+    return fminf(fmaxf(x, 0.0f), 1.0f);
+}
+__device__ float reluProb(float x) {
+    // scale to a more usable range
+    float scaled = 0.25f * x;  // adjust scale as needed
+    return fminf(fmaxf(scaled, 0.0f), 1.0f);
+}
+
+
+
+__global__ void activate_gameOfLife_convolution_kernel(curandState_t* states, GameLife* gamelife, int totalParticles, int gridRows, int gridCols, GameMode gameMode, float threshold, float edgeWeight, float cornerWeight) {
     int i = threadIdx.x + blockIdx.x * blockDim.x;
     if (i >= totalParticles) return;
 
@@ -214,13 +237,21 @@ __global__ void activate_gameOfLife_kernel(GameLife* gamelife, int totalParticle
     int col = i % gridCols;
 
     float neighborSum = 0.0f;
+    int aliveCount = 0;
 
     // Example kernel weights (symmetric, Gaussian-like)
+    // const float kernel[3][3] = {
+    //     {0.5f, 1.0f, 0.5f},
+    //     {1.0f, 0.0f, 1.0f},  // center weight is ignored
+    //     {0.5f, 1.0f, 0.5f}
+    // };
+    // Define your kernel weights dynamically
     const float kernel[3][3] = {
-        {0.5f, 1.0f, 0.5f},
-        {1.0f, 0.0f, 1.0f},  // center weight is ignored
-        {0.5f, 1.0f, 0.5f}
+        {cornerWeight, edgeWeight, cornerWeight},
+        {edgeWeight,   0.0f,       edgeWeight},
+        {cornerWeight, edgeWeight, cornerWeight}
     };
+
 
     for (int dr = -1; dr <= 1; ++dr) {
         for (int dc = -1; dc <= 1; ++dc) {
@@ -231,13 +262,50 @@ __global__ void activate_gameOfLife_kernel(GameLife* gamelife, int totalParticle
             if (nr >= 0 && nr < gridRows && nc >= 0 && nc < gridCols) {
                 int j = nr * gridCols + nc;
                 neighborSum += (gamelife[j].alive ? 1.0f : 0.0f) * kernel[dr + 1][dc + 1];
+                aliveCount += gamelife[j].alive ? 1 : 0;
+
             }
         }
     }
 
-    float threshold = 3.0f;  // similar to GoL but flexible
-    float probability = sigmoid(neighborSum - threshold);
-    gamelife[i].next = (probability > 0.5f);  // or experiment with stochastic: random() < probability
+    if (gameMode == gameOfLife) {
+        if (gamelife[i].alive )
+            gamelife[i].next = (aliveCount == 2 || aliveCount == 3); // stays alive or not
+        else {
+            gamelife[i].next = (aliveCount == 3);
+        }
+    } else if (gameMode == sigmoidF) {
+        // float threshold = 3.0f;  // similar to GoL but flexible
+        float probability = sigmoid(neighborSum - threshold);
+        // gamelife[i].next = (probability > 0.5f);   // no stochastic
+        curandState_t x = states[i];
+        gamelife[i].next = (curand_uniform(&x) <= probability); // stochastic : random() < probability
+        states[i] = x; // save back
+
+    } else if (gameMode == hyperbolicTanF) {
+        float probability = tanhMapped(neighborSum - threshold);
+        curandState_t x = states[i];
+        gamelife[i].next = (curand_uniform(&x) <= probability);
+        states[i] = x; // save back
+        // gamelife[i].next = (probability > 0.5f);
+    } else if (gameMode == reLuF) {
+        float probability = reluProb(neighborSum - threshold);
+        curandState_t x = states[i];
+        gamelife[i].next = (curand_uniform(&x) <= probability);
+        states[i] = x; // save back
+    }
+
+    // // float threshold = 3.0f;  // similar to GoL but flexible
+    // float probability = sigmoid(neighborSum - threshold);
+    // // gamelife[i].next = (probability > 0.5f);  // or experiment with stochastic: random() < probability
+    // curandState_t x = states[i];
+    // gamelife[i].next = (curand_uniform(&x) <= probability);
+    // states[i] = x; // save back
+
+    // float probability = sigmoid(neighborSum - threshold);
+    // if (probability > 0.7f) gamelife[i].next = true;
+    // else if (probability < 0.1f) gamelife[i].next = false;
+    // else gamelife[i].next = gamelife[i].alive;  // keep previous state
 }
 
 
@@ -271,6 +339,10 @@ void CUDAHandler::updateDraw(float dt)
 
     static Settings previousSettings;
     Settings currentSettings = {
+        // .gameMode = gameMode,
+        .numberOfParticles = numberOfParticles,
+        .particleRadius = particleRadius,
+        .restLength = restLength,
         .option = option,
         .widthFactor = widthFactor,
         .gridSize = gridSize,
@@ -280,7 +352,8 @@ void CUDAHandler::updateDraw(float dt)
         .band = band,
         .blockSize = blockSize,
         .diagonalBand = diagonalBand,
-        .border = border
+        .border = border,
+        .rule = rule
     };
     
 
@@ -443,13 +516,21 @@ void CUDAHandler::activateGameLife()
 
 void CUDAHandler::activateGameLife(GameLife* &d_gameLife)
 {
-
     int threads = 256;
     int blocks = (gamelife.size() + threads - 1) / threads;
     commitNextState_kernel<<<blocks, threads>>> (d_gameLife, gamelife.size());
     checkCuda(cudaDeviceSynchronize());
-    activate_gameOfLife_kernel<<<blocks, threads>>>(d_gameLife, gamelife.size(), gridRows, gridCols);
-    
+
+    //generate random seed to be used in rayTracer kernel
+    int num_threads = threads * blocks;
+    curandState_t* d_states;
+    checkCuda(cudaMalloc(&d_states, num_threads * sizeof(curandState_t)));
+    init_random<<<blocks, threads>>>(time(0), d_states);
+    checkCuda(cudaDeviceSynchronize() );
+
+    activate_gameOfLife_convolution_kernel<<<blocks, threads>>>(d_states, d_gameLife, gamelife.size(), gridRows, gridCols, gameMode, sigmoidThreshold, kernelWeightEdge, kernelWeightCorner);
+    // activate_gameOfLife_kernel<<<blocks, threads>>>(d_gameLife, gamelife.size(), gridRows, gridCols);
+    cudaFree(d_states);
 }
 
 void CUDAHandler::initGameLife()
@@ -458,6 +539,7 @@ void CUDAHandler::initGameLife()
     gamelife.clear();
     startSimulation = false;
     setGroupOfParticles(numberOfParticles, {16, 9});
+    // setGroupOfParticles({16, 9});
     checkCuda(cudaMalloc(&d_gameLife, gamelife.size() * sizeof(GameLife)));
     checkCuda(cudaMemcpy(d_gameLife, gamelife.data(), gamelife.size() * sizeof(GameLife), cudaMemcpyHostToDevice));
 
@@ -471,6 +553,51 @@ int2 CUDAHandler::calculateGrid(int n, int a, int b)
 
     for (int rows = 1; rows <= n; ++rows) {
         int cols = (n + rows - 1) / rows; // ceil(n / rows)
+        double currentRatio = static_cast<double>(cols) / rows;
+        double diff = std::abs(currentRatio - targetRatio);
+
+        if (diff < bestDiff) {
+            bestDiff = diff;
+            bestRows = rows;
+            bestCols = cols;
+        }
+    }
+
+    return {bestRows, bestCols};
+}
+
+int2 CUDAHandler::calculateGridWithRatio(float ratioX, float ratioY)
+{
+    float cellSize = 2.0f * particleRadius + restLength;
+
+    int maxCols = static_cast<int>(width  / cellSize);
+    int maxRows = static_cast<int>(height / cellSize);
+
+    float aspect = 1.0 ; //ratioX / ratioY;
+
+    // Fit the grid while maintaining the ratio and staying within bounds
+    int cols = std::min(maxCols, static_cast<int>(maxRows * aspect));
+    int rows = std::min(maxRows, static_cast<int>(cols / aspect));
+
+    return int2{rows, cols};
+}
+
+int2 CUDAHandler::calculateGridClamped(int n, int a, int b)
+{
+    double targetRatio = static_cast<double>(a) / b;
+    double bestDiff = std::numeric_limits<double>::max();
+
+    float cellSize = 2.0f * particleRadius + restLength;
+
+    int maxCols = static_cast<int>(width  / cellSize);
+    int maxRows = static_cast<int>(height / cellSize);
+
+    int bestRows = 1, bestCols = n;
+
+    for (int rows = 1; rows <= maxRows; ++rows) {
+        int cols = (n + rows - 1) / rows; // ceil(n / rows)
+        if (cols > maxCols) continue;     // skip: doesn't fit on screen
+
         double currentRatio = static_cast<double>(cols) / rows;
         double diff = std::abs(currentRatio - targetRatio);
 
@@ -552,6 +679,8 @@ void CUDAHandler::setGroupOfParticles(int totalParticles, int2 ratio, bool ancho
     
     // ratio refers to the proportion of length vs width
     int2 grid = calculateGrid(totalParticles, ratio.x,ratio.y);
+    // restLength = 2 * particleRadius;
+    // int2 grid = calculateGridClamped(totalParticles, ratio.x,ratio.y);
     int rows = grid.x;
     int cols = grid.y;
 
@@ -860,13 +989,55 @@ void CUDAHandler::setGroupOfParticles(int totalParticles, int2 ratio, bool ancho
             }
             break;
         }
-            
-                
-                
-                    
-                    
-                
-                
+        // case 15: { // rule 30
+        //     int center = cols / 2;
+        //     if (r == 0) {
+        //         // First row: set single center cell alive
+        //         gl.alive = gl.next = (c == center);
+        //     } else {
+        //         // Read previous row
+        //         int rowAbove = r - 1;
+        //         int idxLeft = rowAbove * cols + c - 1;
+        //         int idxCenter = rowAbove * cols + c;
+        //         int idxRight = rowAbove * cols + c + 1;
+        
+        //         bool left = (c > 0)              ? gamelife[idxLeft].alive   : false;
+        //         bool mid  =                        gamelife[idxCenter].alive;
+        //         bool right= (c < cols - 1)       ? gamelife[idxRight].alive  : false;
+        
+        //         // Apply Rule 30 logic:  new = left XOR (mid OR right)
+        //         gl.alive = gl.next = left ^ (mid || right);
+        //     }
+        
+        //     gl.color = gl.alive ? make_uchar4(255, 255, 255, 255) : make_uchar4(0, 0, 0, 255);
+        //     break;
+        // }
+        case 15: {
+            int center = cols / 2;
+        
+            // Expose rule via ImGui slider (external to this loop)
+            // extern uint8_t rule;
+        
+            if (r == 0) {
+                // Seed: single dot at center
+                gl.alive = gl.next = (c == center);
+            } else {
+                int rowAbove = r - 1;
+                int idxLeft = rowAbove * cols + c - 1;
+                int idxMid  = rowAbove * cols + c;
+                int idxRight= rowAbove * cols + c + 1;
+        
+                bool left  = (c > 0)         ? gamelife[idxLeft].alive : false;
+                bool mid   = gamelife[idxMid].alive;
+                bool right = (c < cols - 1)  ? gamelife[idxRight].alive : false;
+        
+                int pattern = (left << 2) | (mid << 1) | right;
+                gl.alive = gl.next = ((rule >> pattern) & 1);
+            }
+        
+            gl.color = gl.alive ? WHITE : RED_MERCURY;
+            break;
+        }
                 
                 default: 
                     break;
@@ -878,6 +1049,377 @@ void CUDAHandler::setGroupOfParticles(int totalParticles, int2 ratio, bool ancho
     }
 }
 
+void CUDAHandler::setGroupOfParticles(int2 ratio)
+{
+    // ratio refers to the proportion of length vs width
+    restLength = 2 * particleRadius;
+    int2 grid = calculateGridWithRatio(ratio.x, ratio.y);
+    int rows = grid.x;
+    int cols = grid.y;
+
+    // printf("Rows: %d  -  Cols: %d - total: %d\n", rows, cols, rows * cols);
+
+    gridRows = rows;
+    gridCols = cols;    
+
+    // int offset = width / 2.0f - (cols - 1) * particleRadius;    
+    // float offset = width / 2.0f - (cols - 1) * restLength / 2.0f;
+    float offsetX = (width  - (cols - 1) * restLength) / 2.0f;
+    float offsetY = (height - (rows - 1) * restLength) / 2.0f;
+    topLeft = vec2(offsetX, offsetY);
+
+
+    // topLeft = vec2(offset, top);
+    
+    int rowsSize = widthFactor * gridRows;
+    int colsSize = widthFactor * gridCols * screenRatio;  // screen ratio for correctness
+
+    // Place particles in a 2D grid at restLength spacing
+    for (int r = 0; r < rows; ++r) {
+        for (int c = 0; c < cols; ++c) {
+            float x = topLeft.x + c * restLength;
+            float y = topLeft.y + r * restLength;
+            GameLife gl;
+            gl.position = vec2(x,y);
+            gl.radius = particleRadius;
+            switch(option){
+                case 0:   // grid
+                    
+                    if (c % gridSize == 0 || r % gridSize == 0) {
+                        gl.alive = gl.next = true;
+                        gl.color = WHITE;
+                    } else {
+                        gl.alive = gl.next = false;
+                        gl.color = GREEN;
+                    }
+
+                    
+                    break;
+                case 1: // Vertical
+                    if ((c / colsSize) % 2 == 0) {
+                        gl.alive = gl.next = true;      // cell is ON
+                        gl.color = GREEN;
+                    } else {
+                        gl.alive = gl.next = false;     // cell is OFF
+                        gl.color = GOLD;
+                    }
+                    break;
+                case 2: // horizontal
+                    if ((r / rowsSize) % 2 == 0) {
+                        gl.alive = gl.next = true;      // cell is ON  
+                        gl.color = GREEN;
+                    } else {
+                        gl.alive = gl.next = false;     // cell is OFF
+                        gl.color = GOLD;
+                    }
+                    break;
+                case 3:    // checkered
+                    
+                    if ((r / rowsSize) % 2 == 0 && c / colsSize % 2 == 0) { 
+                        gl.alive = gl.next = true;      // cell is ON
+                        gl.color = GREEN;
+                    } else {
+                        gl.alive = gl.next = false;     // cell is OFF
+                        gl.color = GOLD;
+                    }
+                    break;
+                case 4: { // diagonal
+                    int band = 0;
+                    if (abs(r - c) < band ) {
+                        gl.alive = gl.next = true;
+                        gl.color = GREEN;
+                    } else {
+                        gl.alive = gl.next = false;
+                        gl.color = GOLD;
+                    }
+                    break;
+                }
+                case 5: {  // x shape
+                        int band = 0;
+                        int centerOffset = cols - rows;
+                        if (abs((r) - (c - centerOffset / 2)) <= band || abs((r) + (c - centerOffset / 2) - (rows - 1)) <= band) {
+                        // if (r == c || r + c == rows - 1) {
+                        // if (abs(r - c) <= band || abs(r + c - (rows - 1)) <= band) {
+
+                        gl.alive = gl.next = true;
+                        gl.color = RED_MERCURY;
+                    } else {
+                        gl.alive = gl.next = false;
+                        gl.color = GOLD;
+                    }
+                    break;
+                }
+                case 6: { // Circle
+                    float centerX = cols / 2.0f;
+                    float centerY = rows / 2.0f;
+                    int gap = 150;
+                    int gapSq = gap * gap;
+                    float radiusSquared = (rows / 3.0f) * (rows / 3.0f);
+                    float radiusSquared2 = (rows / 6.0f) * (rows / 6.0f);
+                    float radiusSquared3 = (rows / 9.0f) * (rows / 9.0f);
+                    float dx = c - centerX;
+                    float dy = r - centerY;
+                    float dist = dx * dx + dy * dy;
+                    if (dist <= radiusSquared && dist > radiusSquared2 + gapSq) {
+                        gl.alive = gl.next = true;
+                        gl.color = BLUE_PLANET;
+                    } else if (dist > radiusSquared2 && dist < radiusSquared3 + gapSq ){
+                        gl.alive = gl.next = true;
+                        gl.color = SUN_YELLOW;
+                    } else {
+                        gl.alive = gl.next = false;
+                        gl.color = URANUS_BLUE;
+                    }
+                    break;
+                    }
+                case 7: {
+                    float cx = cols / 2.0f;
+                    float cy = rows / 2.0f;
+                
+                    float dx = c - cx;
+                    float dy = r - cy;
+                    float dist = sqrtf(dx * dx + dy * dy);
+                    float angle = atan2f(dy, dx);  // [-π, π]
+                    angle = angle < 0 ? angle + 2.0f * M_PI : angle;
+                
+                    // Parameters
+                    // float spacing = 6.0f;        // radial spacing per full rotation (~coil tightness)
+                    // float thickness = 2.5f;      // thickness of the spiral band
+                
+                    // Spiral formula: r = spacing * theta
+                    float r_cw = angle * spacing;
+                    float diff_cw = fabs(dist - r_cw);
+                
+                    // Opposite spiral
+                    float r_ccw = (2.0f * M_PI - angle) * spacing;
+                    float diff_ccw = fabs(dist - r_ccw);
+                
+                    if (diff_cw < thickness || diff_ccw < thickness) {
+                        gl.alive = gl.next = true;
+                        gl.color = GREEN;
+                    } else {
+                        gl.alive = gl.next = false;
+                        gl.color = PINK;
+                    }
+                    break;
+                }
+                case 8: { // border
+                    int border = 50;  // thickness of border
+                    if (r < border || r >= rows - border || c < border || c >= cols - border) {
+                        gl.alive = gl.next = true;
+                        gl.color = GREEN;
+                    } else {
+                        gl.alive = gl.next = false;
+                        gl.color = GOLD;
+                    }
+                    break;
+                }
+                case 9: {  // double border
+                    int outer = 1;  // outer thickness
+                    int inner = 50;  // inner offset
+                    bool isOuter = (r < outer || r >= rows - outer || c < outer || c >= cols - outer);
+                    bool isInner = (r >= inner && r < rows - inner && c >= inner && c < cols - inner);
+                    if (isOuter || isInner) {
+                        gl.alive = gl.next = true;
+                        gl.color = NEPTUNE_PURPLE;
+                    } else {
+                        gl.alive = gl.next = false;
+                        gl.color = SUN_YELLOW;
+                    }
+                    break;
+                }
+                case 10: { // concentric Rings
+                    float cx = cols / 2.0f;
+                    float cy = rows / 2.0f;
+                    float dx = c - cx;
+                    float dy = r - cy;
+                    float dist = sqrtf(dx * dx + dy * dy);
+                
+                    //* ringSpacing :controls distance between rings
+                    //* thickness : ring band thickness
+                
+                    float modVal = fmodf(dist, ringSpacing);
+                    if (modVal < thickness) {
+                        gl.alive = gl.next = true;
+                        gl.color = GREEN;
+                    } else {
+                        gl.alive = gl.next = false;
+                        gl.color = NEPTUNE_PURPLE;
+                    }
+                    break;
+                }
+                case 11: { // Radial beam
+                    float cx = cols / 2.0f;
+                    float cy = rows / 2.0f;
+                    float dx = c - cx;
+                    float dy = r - cy;
+                
+                    float angle = atan2f(dy, dx);  // range: [-π, π]
+                    angle = angle < 0 ? angle + 2.0f * M_PI : angle;  // normalize to [0, 2π]
+                
+                    int numBeams = 16;         // number of sun rays
+                    float beamWidth = M_PI * 2.0f / numBeams;  // angle between beams
+                
+                    int beamIndex = (int)(angle / beamWidth);
+                    if (beamIndex % 2 == 0) {
+                        gl.alive = gl.next = true;
+                        gl.color = SUN_YELLOW;
+                    } else {
+                        gl.alive = gl.next = false;
+                        gl.color = GREEN;
+                    }
+                    break;
+                }
+                case 12: {  // Animated Rotating Sunbeam
+                    float cx = cols / 2.0f;
+                    float cy = rows / 2.0f;
+                    float dx = c - cx;
+                    float dy = r - cy;
+                
+                    float angle = atan2f(dy, dx);
+                    angle = angle < 0 ? angle + 2.0f * M_PI : angle;
+                
+                    int numBeams = 16;
+                    float beamWidth = 2.0f * M_PI / numBeams;
+                
+                    float angularOffset = fmodf(framesCount * dt * 0.5f, 2.0f * M_PI);  // rotate over time
+                    angle += angularOffset;
+                
+                    int beamIndex = (int)(angle / beamWidth);
+                    if (beamIndex % 2 == 0) {
+                        gl.alive = gl.next = true;
+                        gl.color = SUN_YELLOW;
+                    } else {
+                        gl.alive = gl.next = false;
+                        gl.color = URANUS_BLUE;
+                    }
+                    break;
+                }
+            case 13: {
+                // int blockSize = 6;      // size of each square block
+                // int band = 1;           // diagonal thickness
+            
+                int blockRow = r / blockSize;
+                int blockCol = c / blockSize;
+            
+                int localR = r % blockSize;
+                int localC = c % blockSize;
+            
+                // Diagonal type: choose one or alternate
+                bool useForwardSlash = true;  // true = '/', false = '\'
+            
+                // Optional: alternate slashes like a checker
+                // if ((blockRow + blockCol) % 2 == 0) useForwardSlash = true;
+                // else useForwardSlash = false;
+            
+                bool isDiagonal = false;
+            
+                if (useForwardSlash) {
+                    isDiagonal = abs(localR + localC - (blockSize - 1)) <= band;
+                } else {
+                    isDiagonal = abs(localR - localC) <= band;
+                }
+            
+                if (isDiagonal) {
+                    gl.alive = gl.next = true;
+                    gl.color = ORANGE;
+                } else {
+                    gl.alive = gl.next = false;
+                    gl.color = TAN;
+                }
+                break;
+            }
+        case 14: {
+            // int blockSize = 6;  // size of each square
+            // int border = 1;     // thickness of grid lines
+            // int diagonalBand = 1;  // diagonal thickness
+        
+            int blockRow = r / blockSize;
+            int blockCol = c / blockSize;
+        
+            int localR = r % blockSize;
+            int localC = c % blockSize;
+        
+            bool isBorder = (localR < border || localR >= blockSize - border ||
+                                localC < border || localC >= blockSize - border);
+        
+            // Diagonal type: '/' or '\' or alternating
+            bool useForwardSlash = ((blockRow + blockCol) % 2 == 0);  // alternate per tile
+        
+            bool isDiagonal = false;
+            if (useForwardSlash) {
+                isDiagonal = abs(localR + localC - (blockSize - 1)) <= diagonalBand;
+            } else {
+                isDiagonal = abs(localR - localC) <= diagonalBand;
+            }
+        
+            if (isBorder || isDiagonal) {
+                gl.alive = gl.next = true;
+                gl.color = make_uchar4(255, 200, 50, 255);  // gold-orange
+            } else {
+                gl.alive = gl.next = false;
+                gl.color = make_uchar4(20, 20, 20, 255);  // dark background
+            }
+            break;
+        }
+        // case 15: { // rule 30
+        //     int center = cols / 2;
+        //     if (r == 0) {
+        //         // First row: set single center cell alive
+        //         gl.alive = gl.next = (c == center);
+        //     } else {
+        //         // Read previous row
+        //         int rowAbove = r - 1;
+        //         int idxLeft = rowAbove * cols + c - 1;
+        //         int idxCenter = rowAbove * cols + c;
+        //         int idxRight = rowAbove * cols + c + 1;
+        
+        //         bool left = (c > 0)              ? gamelife[idxLeft].alive   : false;
+        //         bool mid  =                        gamelife[idxCenter].alive;
+        //         bool right= (c < cols - 1)       ? gamelife[idxRight].alive  : false;
+        
+        //         // Apply Rule 30 logic:  new = left XOR (mid OR right)
+        //         gl.alive = gl.next = left ^ (mid || right);
+        //     }
+        
+        //     gl.color = gl.alive ? make_uchar4(255, 255, 255, 255) : make_uchar4(0, 0, 0, 255);
+        //     break;
+        // }
+            case 15: {
+                int center = cols / 2;
+            
+                // Expose rule via ImGui slider (external to this loop)
+                // extern uint8_t rule;
+            
+                if (r == 0) {
+                    // Seed: single dot at center
+                    gl.alive = gl.next = (c == center);
+                } else {
+                    int rowAbove = r - 1;
+                    int idxLeft = rowAbove * cols + c - 1;
+                    int idxMid  = rowAbove * cols + c;
+                    int idxRight= rowAbove * cols + c + 1;
+            
+                    bool left  = (c > 0)         ? gamelife[idxLeft].alive : false;
+                    bool mid   = gamelife[idxMid].alive;
+                    bool right = (c < cols - 1)  ? gamelife[idxRight].alive : false;
+            
+                    int pattern = (left << 2) | (mid << 1) | right;
+                    gl.alive = gl.next = ((rule >> pattern) & 1);
+                }
+            
+                gl.color = gl.alive ? WHITE : RED_MERCURY;
+                break;
+            }
+                default: 
+                    break;
+
+            }
+            
+            gamelife.push_back(gl);
+        }
+    }
+}
 
 cudaSurfaceObject_t CUDAHandler::MapSurfaceResouse()
 {

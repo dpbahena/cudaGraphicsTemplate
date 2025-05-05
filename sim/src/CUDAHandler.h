@@ -23,6 +23,13 @@ struct GameLife{
     uchar4 color;
 };
 
+enum GameMode {
+    gameOfLife = 0,
+    sigmoidF = 1,
+    hyperbolicTanF = 2,
+    reLuF = 3
+};
+
 enum ToolMode {
     DISTURBE = 0,
     DRAG = 1,
@@ -31,6 +38,10 @@ enum ToolMode {
 };
 
 struct Settings {
+    // GameMode gameMode = gameOfLife;
+    int numberOfParticles = 1000000;
+    float particleRadius = .5f;
+    float restLength = 1.0f;
     int option = 0;
     float widthFactor = 1.0f;
     int gridSize = 10;
@@ -41,14 +52,16 @@ struct Settings {
     int blockSize = 32;
     int diagonalBand = 0;
     int border = 1;
+    uint8_t rule = 30;
+      
 
     bool operator!=(const Settings& other) const {
-        return std::tie(option, widthFactor, gridSize, thickness,
+        return std::tie(/* gameMode, */ numberOfParticles, particleRadius, restLength, option, widthFactor, gridSize, thickness,
                         ringSpacing, spacing, band, blockSize,
-                        diagonalBand, border) !=
-               std::tie(other.option, other.widthFactor, other.gridSize, other.thickness,
+                        diagonalBand, border,rule) !=
+               std::tie(/* other.gameMode, */ other.numberOfParticles, other.particleRadius, other.restLength, other.option, other.widthFactor, other.gridSize, other.thickness,
                         other.ringSpacing, other.spacing, other.band, other.blockSize,
-                        other.diagonalBand, other.border);
+                        other.diagonalBand, other.border, other.rule);
     }
 };
 
@@ -84,6 +97,7 @@ class CUDAHandler {
         bool leftMouseDown = false;
         bool isPanEnabled = false;
         float mouseCursorRadius = 50.0f;
+        GameMode gameMode = gameOfLife;
         ToolMode toolMode = DISTURBE;
 
 
@@ -106,7 +120,10 @@ class CUDAHandler {
         void activateGameLife(GameLife* &d_gameLife);
         void initGameLife();
         void setGroupOfParticles(int totalParticles, int2 ratio, bool anchors = 0);
+        void setGroupOfParticles(int2 ratio);
         int2 calculateGrid(int n, int a, int b);
+        int2 calculateGridWithRatio(float ratioX, float ratioY);
+        int2 calculateGridClamped(int n, int a, int b);
         void drawGameLife(cudaSurfaceObject_t &surface, GameLife* &d_gameLife);
         void disturbeGameLife(vec2 mousePosition);
 
@@ -125,7 +142,12 @@ class CUDAHandler {
         // Option 14: full grid
         int border = 3;
         int diagonalBand = 1;
-
+        // convolutions
+        float sigmoidThreshold = 3.0f;
+        float kernelWeightCenter = 0.0f;  // usually ignored
+        float kernelWeightEdge = 1.0f;
+        float kernelWeightCorner = 0.5f;
+        uint8_t rule = 30;
 
   
 
