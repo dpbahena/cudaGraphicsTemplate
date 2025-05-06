@@ -247,9 +247,9 @@ __global__ void activate_gameOfLife_convolution_kernel(curandState_t* states, Ga
     // };
     // Define your kernel weights dynamically
     const float kernel[3][3] = {
-        {cornerWeight, edgeWeight, -cornerWeight},
-        {edgeWeight,   0.0f,       -edgeWeight},
-        {cornerWeight, -edgeWeight, -cornerWeight}
+        {cornerWeight, edgeWeight, cornerWeight},
+        {edgeWeight,   0.0f,       edgeWeight},
+        {cornerWeight, edgeWeight, cornerWeight}
     };
 
 
@@ -926,8 +926,8 @@ void CUDAHandler::setGroupOfParticles(int totalParticles, int2 ratio, bool ancho
                 // int blockSize = 6;      // size of each square block
                 // int band = 1;           // diagonal thickness
             
-                int blockRow = r / blockSize;
-                int blockCol = c / blockSize;
+                // int blockRow = r / blockSize;
+                // int blockCol = c / blockSize;
             
                 int localR = r % blockSize;
                 int localC = c % blockSize;
@@ -1299,8 +1299,8 @@ void CUDAHandler::setGroupOfParticles(int2 ratio)
                 // int blockSize = 6;      // size of each square block
                 // int band = 1;           // diagonal thickness
             
-                int blockRow = r / blockSize;
-                int blockCol = c / blockSize;
+                // int blockRow = r / blockSize;
+                // int blockCol = c / blockSize;
             
                 int localR = r % blockSize;
                 int localC = c % blockSize;
