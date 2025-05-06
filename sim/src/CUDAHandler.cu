@@ -247,9 +247,9 @@ __global__ void activate_gameOfLife_convolution_kernel(curandState_t* states, Ga
     // };
     // Define your kernel weights dynamically
     const float kernel[3][3] = {
-        {cornerWeight, edgeWeight, cornerWeight},
-        {edgeWeight,   0.0f,       edgeWeight},
-        {cornerWeight, edgeWeight, cornerWeight}
+        {cornerWeight, edgeWeight, -cornerWeight},
+        {edgeWeight,   0.0f,       -edgeWeight},
+        {cornerWeight, -edgeWeight, -cornerWeight}
     };
 
 
