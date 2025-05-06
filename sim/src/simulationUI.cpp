@@ -48,12 +48,29 @@ void SimulationUI::render(CUDAHandler &sim)
         sim.gameMode = (GameMode)gameMode;
         ImGui::NewLine();
         if (gameMode == sigmoidF || gameMode == hyperbolicTanF || gameMode == reLuF) {
-            if (ImGui::CollapsingHeader("Convolution Kernel")) {
-                ImGui::SliderFloat("Sigmoid Threshold", &sim.sigmoidThreshold, 0.0f, 8.0f);
-                ImGui::SliderFloat("Edge Weight", &sim.kernelWeightEdge, 0.0f, 2.0f);
-                ImGui::SliderFloat("Corner Weight", &sim.kernelWeightCorner, 0.0f, 2.0f);
-                // Optional: ImGui::SliderFloat("Center Weight", &sim.kernelWeightCenter, 0.0f, 2.0f);
-            } 
+            // if (ImGui::CollapsingHeader("Convolution Kernel")) {
+            //     ImGui::SliderFloat("Threshold", &sim.sigmoidThreshold, 0.0f, 8.0f);
+            //     ImGui::SliderFloat("Edge Weight", &sim.kernelWeightEdge, 0.0f, 2.0f);
+            //     ImGui::SliderFloat("Corner Weight", &sim.kernelWeightCorner, 0.0f, 2.0f);
+            //     // Optional: ImGui::SliderFloat("Center Weight", &sim.kernelWeightCenter, 0.0f, 2.0f);
+            // } 
+            ImGui::SliderFloat("Threshold", &sim.sigmoidThreshold, 0.0f, 8.0f);
+            if (ImGui::CollapsingHeader("Convolution Kernel2")) {
+                ImGui::Text("Editable 3x3 Kernel");
+            
+                for (int row = 0; row < 3; ++row) {
+                    ImGui::PushID(row);  // isolate slider IDs
+                    for (int col = 0; col < 3; ++col) {
+                        ImGui::PushID(col);
+                        ImGui::SetNextItemWidth(50);
+                        ImGui::SliderFloat("##", &sim.kernelMatrix[row * 3 + col], -2.0f, 2.0f);
+                        ImGui::PopID();
+                        ImGui::SameLine();
+                    }
+                    ImGui::PopID();
+                    ImGui::NewLine();
+                }
+            }
         }
 
         if (sim.option == 0) { // grid
@@ -80,9 +97,13 @@ void SimulationUI::render(CUDAHandler &sim)
             ImGui::SliderInt("Border", &sim.border, 1.0f,20.0f);
         }
         if (sim.option ==15) {
+            ImGui::PushID("Rule Cell Automata");
             static int ruleSlider = 30;
-            ImGui::SliderInt("Cell Automata", &ruleSlider, 0, 255 );
+            ImGui::SliderInt("##Slider", &ruleSlider, 0, 255, "Rule: %0d");
+            ImGui::SameLine();
+            ImGui::InputInt("##Input", &ruleSlider);
             sim.rule = static_cast<uint8_t>(ruleSlider);
+            ImGui::PopID();
         }
         ImGui::Separator;
         ImGui::Text("Total Cells: %d", (int)sim.gamelife.size());

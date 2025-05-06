@@ -308,6 +308,81 @@ __global__ void activate_gameOfLife_convolution_kernel(curandState_t* states, Ga
     // else gamelife[i].next = gamelife[i].alive;  // keep previous state
 }
 
+__global__ void activate_gameOfLife_convolution_kernel(curandState_t* states, GameLife* gamelife, int totalParticles, int gridRows, int gridCols, GameMode gameMode, float threshold, float* kernelMatrix) {
+    int i = threadIdx.x + blockIdx.x * blockDim.x;
+    if (i >= totalParticles) return;
+
+    int row = i / gridCols;
+    int col = i % gridCols;
+
+    float neighborSum = 0.0f;
+    int aliveCount = 0;
+
+    // Example kernel weights (symmetric, Gaussian-like)
+    // const float kernel[3][3] = {
+    //     {0.5f, 1.0f, 0.5f},
+    //     {1.0f, 0.0f, 1.0f},  // center weight is ignored
+    //     {0.5f, 1.0f, 0.5f}
+    // };
+    // Define your kernel weights dynamically
+    // const float kernel[3][3] = {
+    //     {cornerWeight, edgeWeight, cornerWeight},
+    //     {edgeWeight,   0.0f,       edgeWeight},
+    //     {cornerWeight, edgeWeight, cornerWeight}
+    // };
+    
+
+    for (int dr = -1; dr <= 1; ++dr) {
+        for (int dc = -1; dc <= 1; ++dc) {
+            if (dr == 0 && dc == 0) continue;
+
+            int nr = row + dr;
+            int nc = col + dc;
+            if (nr >= 0 && nr < gridRows && nc >= 0 && nc < gridCols) {
+                int j = nr * gridCols + nc;
+                float weight = kernelMatrix[(dr + 1) * 3 + (dc + 1)]; // convert 1D to 2D
+                neighborSum += (gamelife[j].alive ? 1.0f : 0.0f) * weight;
+                aliveCount += gamelife[j].alive ? 1 : 0;
+
+            }
+        }
+    }
+
+    if (gameMode == gameOfLife) {
+        if (gamelife[i].alive )
+            gamelife[i].next = (aliveCount == 2 || aliveCount == 3); // stays alive or not
+        else {
+            gamelife[i].next = (aliveCount == 3);
+        }
+    } else if (gameMode == sigmoidF) {
+        float probability = sigmoid(neighborSum - threshold);
+        // gamelife[i].next = (probability > 0.5f);   // no stochastic
+        curandState_t x = states[i];
+        gamelife[i].next = (curand_uniform(&x) <= probability); // stochastic : random() < probability
+        states[i] = x; // save back
+
+    } else if (gameMode == hyperbolicTanF) {
+        float probability = tanhMapped(neighborSum - threshold);
+        curandState_t x = states[i];
+        gamelife[i].next = (curand_uniform(&x) <= probability);
+        states[i] = x; // save back
+        // gamelife[i].next = (probability > 0.5f);
+        //_______________________________________________________
+        // float probability = tanhMapped(neighborSum - threshold);
+        // if (gamelife[i].alive )
+        //     gamelife[i].next = (aliveCount == 2 || aliveCount == 3 && probability > 0.8f); // stays alive or not
+        // else {
+        //     gamelife[i].next = (aliveCount == 3 || probability == .6f);
+        // }
+
+
+    } else if (gameMode == reLuF) {
+        float probability = reluProb(neighborSum - threshold);
+        curandState_t x = states[i];
+        gamelife[i].next = (curand_uniform(&x) <= probability);
+        states[i] = x; // save back
+    }
+}
 
 
 
@@ -528,9 +603,16 @@ void CUDAHandler::activateGameLife(GameLife* &d_gameLife)
     init_random<<<blocks, threads>>>(time(0), d_states);
     checkCuda(cudaDeviceSynchronize() );
 
-    activate_gameOfLife_convolution_kernel<<<blocks, threads>>>(d_states, d_gameLife, gamelife.size(), gridRows, gridCols, gameMode, sigmoidThreshold, kernelWeightEdge, kernelWeightCorner);
+    float* d_kernelMatrix; // 3 x 3 kernel matrix
+    checkCuda(cudaMalloc(&d_kernelMatrix, 9 * sizeof(float)));
+    checkCuda(cudaMemcpy(d_kernelMatrix, kernelMatrix, 9 * sizeof(float), cudaMemcpyHostToDevice));
+
+    activate_gameOfLife_convolution_kernel<<<blocks, threads>>>(d_states, d_gameLife, gamelife.size(), gridRows, gridCols, gameMode, sigmoidThreshold, d_kernelMatrix);
+    // activate_gameOfLife_convolution_kernel<<<blocks, threads>>>(d_states, d_gameLife, gamelife.size(), gridRows, gridCols, gameMode, sigmoidThreshold, kernelWeightEdge, kernelWeightCorner);
+
     // activate_gameOfLife_kernel<<<blocks, threads>>>(d_gameLife, gamelife.size(), gridRows, gridCols);
     cudaFree(d_states);
+    cudaFree(d_kernelMatrix);
 }
 
 void CUDAHandler::initGameLife()

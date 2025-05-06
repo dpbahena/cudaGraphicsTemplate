@@ -84,7 +84,7 @@ class CUDAHandler {
         float screenRatio;
         vec2 center;
         int framesCount{};
-        int padding = 50;
+        // int padding = 50;
 
 
 
@@ -108,7 +108,14 @@ class CUDAHandler {
         // Game of Life
         vec2 topLeft;
         bool startSimulation = false;
-        int option = 6;
+        int option = 15;
+
+        float kernelMatrix[9] = {
+            0.5f, 1.0f, 0.5f,
+            1.0f, 0.0f, 1.0f,
+            0.5f, 1.0f, 0.5f
+        };
+        
         
         GameLife* d_gameLife; // for GPU operations
         int gridRows, gridCols;
