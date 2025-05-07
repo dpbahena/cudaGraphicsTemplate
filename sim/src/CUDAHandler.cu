@@ -308,7 +308,7 @@ __global__ void activate_gameOfLife_convolution_kernel(curandState_t* states, Ga
     // else gamelife[i].next = gamelife[i].alive;  // keep previous state
 }
 
-__global__ void activate_gameOfLife_convolution_kernel(curandState_t* states, GameLife* gamelife, int totalParticles, int gridRows, int gridCols, GameMode gameMode, float threshold, float* kernelMatrix) {
+__global__ void activate_gameOfLife_convolution_kernel(curandState_t* states, GameLife* gamelife, int totalParticles, int gridRows, int gridCols, GameMode gameMode, float threshold, float* kernelMatrix, uchar4* colors) {
     int i = threadIdx.x + blockIdx.x * blockDim.x;
     if (i >= totalParticles) return;
 
@@ -362,18 +362,21 @@ __global__ void activate_gameOfLife_convolution_kernel(curandState_t* states, Ga
         states[i] = x; // save back
 
     } else if (gameMode == hyperbolicTanF) {
-        float probability = tanhMapped(neighborSum - threshold);
-        curandState_t x = states[i];
-        gamelife[i].next = (curand_uniform(&x) <= probability);
-        states[i] = x; // save back
-        // gamelife[i].next = (probability > 0.5f);
-        //_______________________________________________________
         // float probability = tanhMapped(neighborSum - threshold);
-        // if (gamelife[i].alive )
-        //     gamelife[i].next = (aliveCount == 2 || aliveCount == 3 && probability > 0.8f); // stays alive or not
-        // else {
-        //     gamelife[i].next = (aliveCount == 3 || probability == .6f);
-        // }
+        // curandState_t x = states[i];
+        // gamelife[i].next = (curand_uniform(&x) <= probability);
+        // states[i] = x; // save back
+        // // gamelife[i].next = (probability > 0.5f);
+        //_______________________________________________________
+        float probability = tanhMapped(neighborSum - threshold);
+        if (gamelife[i].alive ) {
+            gamelife[i].next = (aliveCount == 2 || aliveCount == 3 && probability > 0.8f); // stays alive or not
+            gamelife[i].color = colors[3];
+        }
+        else {
+            gamelife[i].next = (aliveCount == 3 || probability == .6f);
+            gamelife[i].color = colors[7];
+        }
 
 
     } else if (gameMode == reLuF) {
@@ -607,12 +610,18 @@ void CUDAHandler::activateGameLife(GameLife* &d_gameLife)
     checkCuda(cudaMalloc(&d_kernelMatrix, 9 * sizeof(float)));
     checkCuda(cudaMemcpy(d_kernelMatrix, kernelMatrix, 9 * sizeof(float), cudaMemcpyHostToDevice));
 
-    activate_gameOfLife_convolution_kernel<<<blocks, threads>>>(d_states, d_gameLife, gamelife.size(), gridRows, gridCols, gameMode, sigmoidThreshold, d_kernelMatrix);
+    uchar4* d_colors;
+    checkCuda(cudaMalloc(&d_colors,  colorPallete.size() * sizeof(uchar4)));
+    checkCuda(cudaMemcpy(d_colors, colorPallete.data(), colorPallete.size() * sizeof(uchar4), cudaMemcpyHostToDevice));
+
+
+    activate_gameOfLife_convolution_kernel<<<blocks, threads>>>(d_states, d_gameLife, gamelife.size(), gridRows, gridCols, gameMode, sigmoidThreshold, d_kernelMatrix, d_colors);
     // activate_gameOfLife_convolution_kernel<<<blocks, threads>>>(d_states, d_gameLife, gamelife.size(), gridRows, gridCols, gameMode, sigmoidThreshold, kernelWeightEdge, kernelWeightCorner);
 
     // activate_gameOfLife_kernel<<<blocks, threads>>>(d_gameLife, gamelife.size(), gridRows, gridCols);
     cudaFree(d_states);
     cudaFree(d_kernelMatrix);
+    cudaFree(d_colors);
 }
 
 void CUDAHandler::initGameLife()

@@ -7,11 +7,13 @@
 #include "imgui.h"
 #include "imgui_impl_glut.h"
 #include "imgui_impl_opengl2.h"
+#include "cuda_utils.h"
 #include <cuda_runtime.h>
 #include <cuda_gl_interop.h>
 #include <vector>
 #include <string>
 #include <tuple> // For std::tie
+
 
 struct GameLife{
 
@@ -120,6 +122,7 @@ class CUDAHandler {
         GameLife* d_gameLife; // for GPU operations
         int gridRows, gridCols;
         std::vector<GameLife> gamelife;
+        std::vector<uchar4> colorPallete = {BLUE_PLANET, GRAY_ROCKY, SUN_YELLOW, JUPITER, FULL_MOON, VENUS_TAN, RED_MERCURY, GREEN, GOLD, WHITE, PINK, ORANGE, TAN };
         int numberOfParticles = 1000000;
         float particleRadius = .5f;
         float restLength = 1;
