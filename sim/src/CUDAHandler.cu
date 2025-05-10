@@ -356,27 +356,30 @@ __global__ void activate_gameOfLife_convolution_kernel(curandState_t* states, Ga
         }
     } else if (gameMode == sigmoidF) {
         float probability = sigmoid(neighborSum - threshold);
-        // gamelife[i].next = (probability > 0.5f);   // no stochastic
+        gamelife[i].next = (probability > 0.5f);   // no stochastic
         curandState_t x = states[i];
         gamelife[i].next = (curand_uniform(&x) <= probability); // stochastic : random() < probability
         states[i] = x; // save back
+        //______________________________________________
+        // float growth = sigmoid(neighborSum * (aliveCount - threshold));
+        // gamelife[i].next = growth > .5f;
 
     } else if (gameMode == hyperbolicTanF) {
-        // float probability = tanhMapped(neighborSum - threshold);
-        // curandState_t x = states[i];
-        // gamelife[i].next = (curand_uniform(&x) <= probability);
-        // states[i] = x; // save back
-        // // gamelife[i].next = (probability > 0.5f);
-        //_______________________________________________________
         float probability = tanhMapped(neighborSum - threshold);
-        if (gamelife[i].alive ) {
-            gamelife[i].next = (aliveCount == 2 || aliveCount == 3 && probability > 0.8f); // stays alive or not
-            gamelife[i].color = colors[3];
-        }
-        else {
-            gamelife[i].next = (aliveCount == 3 || probability == .6f);
-            gamelife[i].color = colors[7];
-        }
+        curandState_t x = states[i];
+        gamelife[i].next = (curand_uniform(&x) <= probability);
+        states[i] = x; // save back
+        // gamelife[i].next = (probability > 0.5f);
+        //_______________________________________________________
+        // float probability = tanhMapped(neighborSum - threshold);
+        // if (gamelife[i].alive ) {
+        //     gamelife[i].next = (aliveCount == 2 || aliveCount == 3 && probability > 0.8f); // stays alive or not
+        //     gamelife[i].color = colors[3];
+        // }
+        // else {
+        //     gamelife[i].next = (aliveCount == 3 || probability == .6f);
+        //     gamelife[i].color = colors[7];
+        // }
 
 
     } else if (gameMode == reLuF) {
