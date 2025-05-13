@@ -72,7 +72,9 @@ void SimulationUI::render(CUDAHandler &sim)
                 }
             }
         }
-
+        ImGui::SliderFloat("radius kernel", &sim.kernelRadius, 1.0f, 50.0f);
+        ImGui::SliderFloat("sigma", &sim.sigma, .01f, 3.15f);
+        ImGui::SliderFloat("mu", &sim.mu, .05f, 4.5f);
         if (sim.option == 0) { // grid
             ImGui::SliderInt("Grid Size", &sim.gridSize, 2, 100);
         } 

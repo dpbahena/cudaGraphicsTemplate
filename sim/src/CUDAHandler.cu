@@ -9,6 +9,11 @@ __global__ void init_random(unsigned int seed, curandState_t* states){
     curand_init(seed, idx, 0, &states[idx]);
 }
 
+template<typename T>
+__device__ T clamp(T x, T minVal, T maxVal) {
+    return max(minVal, min(x, maxVal));
+}
+
 
 // 1D threads
 __global__ void disturbeGameLife_kernel(GameLife* gameLife, float mousePosX, float mousePosY, int numberOfCells, float mouseRadius)
@@ -177,6 +182,13 @@ __global__ void commitNextState_kernel(GameLife* gamelife, int totalParticles) {
 
     gamelife[i].alive = gamelife[i].next;
     gamelife[i].next = false;
+}
+__global__ void commitNextEnergy_kernel(GameLife* gamelife, int totalParticles) {
+    int i = threadIdx.x + blockIdx.x * blockDim.x;
+    if (i >= totalParticles) return;
+
+    gamelife[i].energy = gamelife[i].nextEnergy;
+    gamelife[i].nextEnergy = 0;
 }
 
 __global__ void activate_gameOfLife_kernel(GameLife* gamelife, int totalParticles, int gridRows, int gridCols) {
@@ -390,7 +402,151 @@ __global__ void activate_gameOfLife_convolution_kernel(curandState_t* states, Ga
     }
 }
 
+// __device__ float sigmoid(float x) {
+//     return 1.0f / (1.0f + expf(-x));
+// }
 
+__device__ float clamp(float x) {
+    return fminf(1.0f, fmaxf(0.0f, x));
+}
+
+__global__ void activate_gameOfLife_convolution_kernel(
+    curandState_t* states,
+    GameLife* gamelife,
+    int totalParticles,
+    int gridRows,
+    int gridCols,
+    GameMode gameMode,
+    float threshold,
+    float* kernelMatrix,
+    uchar4* colors,
+    int numOfColors
+) {
+    int i = threadIdx.x + blockIdx.x * blockDim.x;
+    if (i >= totalParticles) return;
+
+    int row = i / gridCols;
+    int col = i % gridCols;
+
+    float neighborSum = 0.0f;
+
+    // Count weighted neighbor activity (energy > 0.5f is considered active)
+    for (int dr = -1; dr <= 1; ++dr) {
+        for (int dc = -1; dc <= 1; ++dc) {
+            if (dr == 0 && dc == 0) continue;
+
+            int nr = row + dr;
+            int nc = col + dc;
+            if (nr >= 0 && nr < gridRows && nc >= 0 && nc < gridCols) {
+                int j = nr * gridCols + nc;
+                float weight = kernelMatrix[(dr + 1) * 3 + (dc + 1)];
+                float neighborActive = (gamelife[j].energy > 0.5f) ? 1.0f : 0.0f;
+                neighborSum += neighborActive * weight;
+            }
+        }
+    }
+
+    // Compute growth probability using selected function
+    float probability = 0.0f;
+    float input = neighborSum - threshold;
+    if (gameMode == sigmoidF) {
+        probability = sigmoid(input);
+    } else if (gameMode == hyperbolicTanF) {
+        probability = tanhMapped(input);
+    } else if (gameMode == reLuF) {
+        probability = reluProb(input);
+    } else { // Classic Game of Life
+        int aliveCount = (int)(neighborSum + 0.5f); // round to nearest int
+        if (gamelife[i].energy > 0.5f)
+            probability = (aliveCount == 2 || aliveCount == 3) ? 1.0f : 0.0f;
+        else
+            probability = (aliveCount == 3) ? 1.0f : 0.0f;
+    }
+
+    // Update energy smoothly toward target (using randomness if not deterministic)
+    curandState_t localState = states[i];
+    float randVal = curand_uniform(&localState);
+    states[i] = localState;
+
+    float target = (randVal < probability) ? 1.0f : 0.0f;
+    float dt = 0.1f;
+    float currentEnergy = gamelife[i].energy;
+    gamelife[i].nextEnergy = clamp(currentEnergy + dt * (target - currentEnergy));
+
+    // Update alive/next flags for compatibility
+    gamelife[i].alive = (gamelife[i].nextEnergy > 0.5f);
+    gamelife[i].next = gamelife[i].alive;
+
+    // Assign color based on energy (scale over numOfColors)
+    int colorIndex = (int)(gamelife[i].nextEnergy * (numOfColors - 1));
+    gamelife[i].color = colors[clamp(colorIndex, 0, numOfColors - 1)];
+}
+
+__device__ float gaussianKernel(float r, float sigma) {
+    return expf(- (r * r) / (2.0f * sigma * sigma));
+}
+
+__device__ float growthMapping(float u, float mu, float sigma) {
+    return 2.0f * expf(-powf((u - mu), 2) / (2.0f * sigma * sigma)) - 1.0f;
+}
+
+__global__ void activate_LeniaGoL_convolution_kernel(
+    curandState_t* states,
+    GameLife* gamelife,
+    int totalParticles,
+    int gridRows,
+    int gridCols,
+    uchar4* colors,
+    int numOfColors,
+    float* kernelMatrix,
+    int kernelDiameter,
+    float radius,
+    float sigma,
+    float mu,
+    float dt
+) {
+    int i = threadIdx.x + blockIdx.x * blockDim.x;
+    if (i >= totalParticles) return;
+
+    int row = i / gridCols;
+    int col = i % gridCols;
+
+    float neighborSum = 0.0f;
+    float weightSum = 0.0f;
+
+    for (int dr = -radius; dr <= radius; ++dr) {
+        for (int dc = -radius; dc <= radius; ++dc) {
+            int nr = row + dr;
+            int nc = col + dc;
+            // float distance = sqrtf(dr * dr + dc * dc);
+            if (nr >= 0 && nr < gridRows && nc >= 0 && nc < gridCols) {
+                int j = nr * gridCols + nc;
+                // float weight = gaussianKernel(distance / radius, sigma);
+                int kernelIndex = (dr + radius) * kernelDiameter + (dc + radius);
+                float weight = kernelMatrix[kernelIndex];
+                neighborSum += gamelife[j].energy * weight;
+                weightSum += weight;
+            }
+        }
+    }
+
+    if (weightSum > 0.0f) {
+        neighborSum /= weightSum;
+    }
+
+    float growth = growthMapping(neighborSum, mu, sigma);
+    float currentEnergy = gamelife[i].energy;
+    currentEnergy += dt * growth;
+    currentEnergy = fminf(1.0f, fmaxf(0.0f, currentEnergy));
+    gamelife[i].nextEnergy = currentEnergy;
+
+    gamelife[i].alive = (currentEnergy > 0.5f);
+    gamelife[i].next = gamelife[i].alive;
+
+    int colorIndex = static_cast<int>(currentEnergy * (numOfColors - 1));
+    colorIndex = max(0, min(colorIndex, numOfColors - 1));
+    gamelife[i].color = colors[colorIndex];
+}
 
 
 CUDAHandler* CUDAHandler::instance = nullptr;
@@ -600,7 +756,12 @@ void CUDAHandler::activateGameLife(GameLife* &d_gameLife)
     int threads = 256;
     int blocks = (gamelife.size() + threads - 1) / threads;
     commitNextState_kernel<<<blocks, threads>>> (d_gameLife, gamelife.size());
+    // commitNextEnergy_kernel<<<blocks, threads>>> (d_gameLife, gamelife.size());
+    
     checkCuda(cudaDeviceSynchronize());
+
+
+
 
     //generate random seed to be used in rayTracer kernel
     int num_threads = threads * blocks;
@@ -613,18 +774,33 @@ void CUDAHandler::activateGameLife(GameLife* &d_gameLife)
     checkCuda(cudaMalloc(&d_kernelMatrix, 9 * sizeof(float)));
     checkCuda(cudaMemcpy(d_kernelMatrix, kernelMatrix, 9 * sizeof(float), cudaMemcpyHostToDevice));
 
+    // Generate the kernel on the host
+    std::vector<float> hostKernel = generateCircularGaussianKernel(kernelRadius, sigma);
+    int kernelSize = (2 * kernelRadius + 1) * (2 * kernelRadius + 1);
+    int kernelDiameter = 2 * kernelRadius + 1;
+
+    // Allocate memory on the device
+    float* deviceKernel;
+    cudaMalloc(&deviceKernel, kernelSize * sizeof(float));
+
+    // Copy the kernel from host to device
+    cudaMemcpy(deviceKernel, hostKernel.data(), kernelSize * sizeof(float), cudaMemcpyHostToDevice);
+
     uchar4* d_colors;
     checkCuda(cudaMalloc(&d_colors,  colorPallete.size() * sizeof(uchar4)));
     checkCuda(cudaMemcpy(d_colors, colorPallete.data(), colorPallete.size() * sizeof(uchar4), cudaMemcpyHostToDevice));
 
-
-    activate_gameOfLife_convolution_kernel<<<blocks, threads>>>(d_states, d_gameLife, gamelife.size(), gridRows, gridCols, gameMode, sigmoidThreshold, d_kernelMatrix, d_colors);
+    activate_LeniaGoL_convolution_kernel<<<blocks, threads>>>(d_states, d_gameLife, gamelife.size(), gridRows, gridCols, d_colors, colorPallete.size(), deviceKernel, kernelDiameter, kernelRadius, sigma, mu, dt);
+    // activate_gameOfLife_convolution_kernel<<<blocks, threads>>>(d_states, d_gameLife, gamelife.size(), gridRows, gridCols, gameMode, sigmoidThreshold, d_kernelMatrix, d_colors, colorPallete.size());
+    // activate_gameOfLife_convolution_kernel<<<blocks, threads>>>(d_states, d_gameLife, gamelife.size(), gridRows, gridCols, gameMode, sigmoidThreshold, d_kernelMatrix, d_colors);
     // activate_gameOfLife_convolution_kernel<<<blocks, threads>>>(d_states, d_gameLife, gamelife.size(), gridRows, gridCols, gameMode, sigmoidThreshold, kernelWeightEdge, kernelWeightCorner);
 
     // activate_gameOfLife_kernel<<<blocks, threads>>>(d_gameLife, gamelife.size(), gridRows, gridCols);
+    commitNextEnergy_kernel<<<blocks, threads>>> (d_gameLife, gamelife.size());
     cudaFree(d_states);
     cudaFree(d_kernelMatrix);
     cudaFree(d_colors);
+    cudaFree(deviceKernel);
 }
 
 void CUDAHandler::initGameLife()
@@ -768,6 +944,34 @@ void CUDAHandler::disturbeGameLife(vec2 mousePosition)
 
 }
 
+std::vector<float> CUDAHandler::generateCircularGaussianKernel(int radius, float sigma)
+{
+    int diameter = 2 * radius + 1;
+    std::vector<float> kernel(diameter * diameter);
+    float sum = 0.0f;
+
+    for (int y = -radius; y <= radius; ++y) {
+        for (int x = -radius; x <= radius; ++x) {
+            float distance = std::sqrt(static_cast<float>(x * x + y * y));
+            if (distance <= radius) {
+                // float value = std::exp(-(distance * distance) / (2.0f * sigma * sigma));
+                float value = std::exp(sigma - (sigma/(4 * radius * (1 - radius))));
+                // float value = std::pow(4 * distance * (1 - distance), sigma);
+                kernel[(y + radius) * diameter + (x + radius)] = value;
+                sum += value;
+            } else {
+                kernel[(y + radius) * diameter + (x + radius)] = 0.0f;
+            }
+        }
+    }
+
+    // Normalize the kernel so that the sum of all elements is 1
+    for (auto& value : kernel) {
+        value /= sum;
+    }
+    return kernel;
+}
+
 void CUDAHandler::setGroupOfParticles(int totalParticles, int2 ratio, bool anchors )
 {
     
@@ -811,6 +1015,7 @@ void CUDAHandler::setGroupOfParticles(int totalParticles, int2 ratio, bool ancho
                         gl.color = WHITE;
                     } else {
                         gl.alive = gl.next = false;
+
                         gl.color = GREEN;
                     }
 

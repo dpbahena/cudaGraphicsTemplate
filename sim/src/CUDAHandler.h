@@ -21,7 +21,9 @@ struct GameLife{
     int radius;
     bool alive;
     bool next;
+    float nextEnergy=0.01f;
     int aliveNeighbors;
+    float energy=.01f;
     uchar4 color;
 };
 
@@ -136,6 +138,7 @@ class CUDAHandler {
         int2 calculateGridClamped(int n, int a, int b);
         void drawGameLife(cudaSurfaceObject_t &surface, GameLife* &d_gameLife);
         void disturbeGameLife(vec2 mousePosition);
+        std::vector<float> generateCircularGaussianKernel(int radius, float sigma);
 
         // options 0 Grid 
         int gridSize = 20;
@@ -158,6 +161,10 @@ class CUDAHandler {
         float kernelWeightEdge = 1.0f;
         float kernelWeightCorner = 0.5f;
         uint8_t rule = 30;
+        float sigma= 0.4f;
+        float mu = 0.134f;
+        float kernelRadius=15.0;
+
 
   
 
