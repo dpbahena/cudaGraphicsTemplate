@@ -130,6 +130,7 @@ class CUDAHandler {
         float restLength = 1;
         void activateGameLife();
         void activateGameLife(GameLife* &d_gameLife);
+        void activateLenia(GameLife* &d_gameLife);
         void initGameLife();
         void setGroupOfParticles(int totalParticles, int2 ratio, bool anchors = 0);
         void setGroupOfParticles(int2 ratio);

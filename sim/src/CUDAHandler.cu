@@ -607,7 +607,8 @@ void CUDAHandler::updateDraw(float dt)
     
     
     if(startSimulation) {
-        activateGameLife(d_gameLife);
+        // activateGameLife(d_gameLife);
+        activateLenia(d_gameLife);
     }
     // checkCuda(cudaMemcpy(gamelife.data(), d_gameLife, gamelife.size() * sizeof(GameLife), cudaMemcpyDeviceToHost));
     
@@ -799,6 +800,58 @@ void CUDAHandler::activateGameLife(GameLife* &d_gameLife)
     commitNextEnergy_kernel<<<blocks, threads>>> (d_gameLife, gamelife.size());
     cudaFree(d_states);
     cudaFree(d_kernelMatrix);
+    cudaFree(d_colors);
+    cudaFree(deviceKernel);
+}
+
+void CUDAHandler::activateLenia(GameLife* &d_gameLife)
+{
+    int threads = 256;
+    int blocks = (gamelife.size() + threads - 1) / threads;
+    commitNextState_kernel<<<blocks, threads>>> (d_gameLife, gamelife.size());
+    // commitNextEnergy_kernel<<<blocks, threads>>> (d_gameLife, gamelife.size());
+    
+    checkCuda(cudaDeviceSynchronize());
+
+
+
+
+    //generate random seed to be used in rayTracer kernel
+    int num_threads = threads * blocks;
+    curandState_t* d_states;
+    checkCuda(cudaMalloc(&d_states, num_threads * sizeof(curandState_t)));
+    init_random<<<blocks, threads>>>(time(0), d_states);
+    checkCuda(cudaDeviceSynchronize() );
+
+    // float* d_kernelMatrix; // 3 x 3 kernel matrix
+    // checkCuda(cudaMalloc(&d_kernelMatrix, 9 * sizeof(float)));
+    // checkCuda(cudaMemcpy(d_kernelMatrix, kernelMatrix, 9 * sizeof(float), cudaMemcpyHostToDevice));
+
+    // Generate the kernel on the host
+    std::vector<float> hostKernel = generateCircularGaussianKernel(kernelRadius, kernelSigma);
+    int kernelSize = (2 * kernelRadius + 1) * (2 * kernelRadius + 1);
+    int kernelDiameter = 2 * kernelRadius + 1;
+
+    // Allocate memory on the device
+    float* deviceKernel;
+    cudaMalloc(&deviceKernel, kernelSize * sizeof(float));
+
+    // Copy the kernel from host to device
+    cudaMemcpy(deviceKernel, hostKernel.data(), kernelSize * sizeof(float), cudaMemcpyHostToDevice);
+
+    uchar4* d_colors;
+    checkCuda(cudaMalloc(&d_colors,  colorPallete.size() * sizeof(uchar4)));
+    checkCuda(cudaMemcpy(d_colors, colorPallete.data(), colorPallete.size() * sizeof(uchar4), cudaMemcpyHostToDevice));
+
+    activate_LeniaGoL_convolution_kernel<<<blocks, threads>>>(d_states, d_gameLife, gamelife.size(), gridRows, gridCols, d_colors, colorPallete.size(), deviceKernel, kernelDiameter, kernelRadius, sigma, mu, dt);
+    // activate_gameOfLife_convolution_kernel<<<blocks, threads>>>(d_states, d_gameLife, gamelife.size(), gridRows, gridCols, gameMode, sigmoidThreshold, d_kernelMatrix, d_colors, colorPallete.size());
+    // activate_gameOfLife_convolution_kernel<<<blocks, threads>>>(d_states, d_gameLife, gamelife.size(), gridRows, gridCols, gameMode, sigmoidThreshold, d_kernelMatrix, d_colors);
+    // activate_gameOfLife_convolution_kernel<<<blocks, threads>>>(d_states, d_gameLife, gamelife.size(), gridRows, gridCols, gameMode, sigmoidThreshold, kernelWeightEdge, kernelWeightCorner);
+
+    // activate_gameOfLife_kernel<<<blocks, threads>>>(d_gameLife, gamelife.size(), gridRows, gridCols);
+    commitNextEnergy_kernel<<<blocks, threads>>> (d_gameLife, gamelife.size());
+    cudaFree(d_states);
+    // cudaFree(d_kernelMatrix);
     cudaFree(d_colors);
     cudaFree(deviceKernel);
 }
