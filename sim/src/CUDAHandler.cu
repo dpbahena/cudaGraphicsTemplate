@@ -775,7 +775,7 @@ void CUDAHandler::activateGameLife(GameLife* &d_gameLife)
     checkCuda(cudaMemcpy(d_kernelMatrix, kernelMatrix, 9 * sizeof(float), cudaMemcpyHostToDevice));
 
     // Generate the kernel on the host
-    std::vector<float> hostKernel = generateCircularGaussianKernel(kernelRadius, sigma);
+    std::vector<float> hostKernel = generateCircularGaussianKernel(kernelRadius, kernelSigma);
     int kernelSize = (2 * kernelRadius + 1) * (2 * kernelRadius + 1);
     int kernelDiameter = 2 * kernelRadius + 1;
 
@@ -954,8 +954,8 @@ std::vector<float> CUDAHandler::generateCircularGaussianKernel(int radius, float
         for (int x = -radius; x <= radius; ++x) {
             float distance = std::sqrt(static_cast<float>(x * x + y * y));
             if (distance <= radius) {
-                // float value = std::exp(-(distance * distance) / (2.0f * sigma * sigma));
-                float value = std::exp(sigma - (sigma/(4 * radius * (1 - radius))));
+                float value = std::exp(-(distance * distance) / (2.0f * sigma * sigma));
+                // float value = std::exp(sigma - (sigma/(4 * radius * (1 - radius))));
                 // float value = std::pow(4 * distance * (1 - distance), sigma);
                 kernel[(y + radius) * diameter + (x + radius)] = value;
                 sum += value;

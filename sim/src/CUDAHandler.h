@@ -161,9 +161,10 @@ class CUDAHandler {
         float kernelWeightEdge = 1.0f;
         float kernelWeightCorner = 0.5f;
         uint8_t rule = 30;
-        float sigma= 0.4f;
-        float mu = 0.134f;
-        float kernelRadius=15.0;
+        float sigma= 0.03f;
+        float kernelSigma = 0.65f;
+        float mu = 0.16f;
+        float kernelRadius = 8.0f;
 
 
   
