@@ -176,6 +176,18 @@ __global__ void drawParticles_kernel(cudaSurfaceObject_t surface, GameLife* part
     drawFilledCircle(surface, x0, y0, radius, gl.color, width, height);
 } 
 
+__global__ void drawParticles_kernel2(cudaSurfaceObject_t surface, GameLife* particles, int numberParticles, int width, int height, float zoom, float panX, float panY){
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= numberParticles) return;
+    GameLife gl = particles[i];
+    vec2 pos = gl.position;
+    float radius = gl.radius * zoom;
+    int x0 = (int)(width / 2.0f + (pos.x + panX) * zoom);
+    int y0 = (int)(height / 2.0f + (pos.y + panY) * zoom);
+    
+    drawFilledCircle(surface, x0, y0, radius, gl.color, width, height);
+}
+
 __global__ void commitNextState_kernel(GameLife* gamelife, int totalParticles) {
     int i = threadIdx.x + blockIdx.x * blockDim.x;
     if (i >= totalParticles) return;
@@ -190,6 +202,27 @@ __global__ void commitNextEnergy_kernel(GameLife* gamelife, int totalParticles) 
     gamelife[i].energy = gamelife[i].nextEnergy;
     gamelife[i].nextEnergy = 0;
 }
+
+__global__ void thresholdAndCommit_kernel(GameLife* g,
+                                          int n,
+                                          const uchar4* colors,
+                                          int numColors,
+                                          float thresh /* e.g. 0.3f */)
+{
+    int i = threadIdx.x + blockIdx.x * blockDim.x;
+    if (i >= n) return;
+
+    const float e = g[i].energy;          // already up-to-date from step-2
+
+    // 1.  Boolean life flag (only used if you still need a discrete state)
+    g[i].alive = (e > thresh);
+
+    // 2.  Colour lookup for rendering – linear ramp through your palette
+    int idx = (int)(e * (numColors - 1) + 0.5f);
+    idx = max(0, min(idx, numColors - 1));
+    g[i].color = colors[idx];
+}
+
 
 __global__ void activate_gameOfLife_kernel(GameLife* gamelife, int totalParticles, int gridRows, int gridCols) {
     int i = threadIdx.x + blockIdx.x * blockDim.x;
@@ -548,6 +581,55 @@ __global__ void activate_LeniaGoL_convolution_kernel(
     gamelife[i].color = colors[colorIndex];
 }
 
+__global__ void activate_LeniaGoL_convolution_kernel2(
+    curandState_t* states,
+    GameLife* gamelife,
+    int totalParticles,
+    int gridRows,
+    int gridCols,
+    uchar4* colors,
+    int numOfColors,
+    float* kernelMatrix,
+    int kernelDiameter,
+    float radius,
+    float sigma,
+    float mu,
+    float dt
+) {
+    int i = threadIdx.x + blockIdx.x * blockDim.x;
+    if (i >= totalParticles) return;
+
+    int row = i / gridCols;
+    int col = i % gridCols;
+
+    float neighborSum = 0.0f;
+    float weightSum = 0.0f;
+
+    for (int dr = -radius; dr <= radius; ++dr) {
+        for (int dc = -radius; dc <= radius; ++dc) {
+            int nr = row + dr;
+            int nc = col + dc;
+            // float distance = sqrtf(dr * dr + dc * dc);
+            if (nr >= 0 && nr < gridRows && nc >= 0 && nc < gridCols) {
+                int j = nr * gridCols + nc;
+                // float weight = gaussianKernel(distance / radius, sigma);
+                int kernelIndex = (dr + radius) * kernelDiameter + (dc + radius);
+                float weight = kernelMatrix[kernelIndex];
+                neighborSum += gamelife[j].energy * weight;
+                weightSum += weight;
+            }
+        }
+    }
+
+   
+    float u = neighborSum / weightSum;
+    
+
+    float growth = growthMapping(u, mu, sigma);
+    float e = fminf(1.0f, fmaxf(0.0f, gamelife[i].energy + dt * growth));
+    gamelife[i].nextEnergy = e;
+
+}
 
 CUDAHandler* CUDAHandler::instance = nullptr;
 
@@ -808,7 +890,7 @@ void CUDAHandler::activateLenia(GameLife* &d_gameLife)
 {
     int threads = 256;
     int blocks = (gamelife.size() + threads - 1) / threads;
-    commitNextState_kernel<<<blocks, threads>>> (d_gameLife, gamelife.size());
+    // commitNextState_kernel<<<blocks, threads>>> (d_gameLife, gamelife.size());
     // commitNextEnergy_kernel<<<blocks, threads>>> (d_gameLife, gamelife.size());
     
     checkCuda(cudaDeviceSynchronize());
@@ -823,9 +905,6 @@ void CUDAHandler::activateLenia(GameLife* &d_gameLife)
     init_random<<<blocks, threads>>>(time(0), d_states);
     checkCuda(cudaDeviceSynchronize() );
 
-    // float* d_kernelMatrix; // 3 x 3 kernel matrix
-    // checkCuda(cudaMalloc(&d_kernelMatrix, 9 * sizeof(float)));
-    // checkCuda(cudaMemcpy(d_kernelMatrix, kernelMatrix, 9 * sizeof(float), cudaMemcpyHostToDevice));
 
     // Generate the kernel on the host
     std::vector<float> hostKernel = generateCircularGaussianKernel(kernelRadius, kernelSigma);
@@ -843,15 +922,19 @@ void CUDAHandler::activateLenia(GameLife* &d_gameLife)
     checkCuda(cudaMalloc(&d_colors,  colorPallete.size() * sizeof(uchar4)));
     checkCuda(cudaMemcpy(d_colors, colorPallete.data(), colorPallete.size() * sizeof(uchar4), cudaMemcpyHostToDevice));
 
-    activate_LeniaGoL_convolution_kernel<<<blocks, threads>>>(d_states, d_gameLife, gamelife.size(), gridRows, gridCols, d_colors, colorPallete.size(), deviceKernel, kernelDiameter, kernelRadius, sigma, mu, dt);
+    activate_LeniaGoL_convolution_kernel2<<<blocks, threads>>>(d_states, d_gameLife, gamelife.size(), gridRows, gridCols, d_colors, colorPallete.size(), deviceKernel, kernelDiameter, kernelRadius, sigma, mu, conv_dt);
     // activate_gameOfLife_convolution_kernel<<<blocks, threads>>>(d_states, d_gameLife, gamelife.size(), gridRows, gridCols, gameMode, sigmoidThreshold, d_kernelMatrix, d_colors, colorPallete.size());
     // activate_gameOfLife_convolution_kernel<<<blocks, threads>>>(d_states, d_gameLife, gamelife.size(), gridRows, gridCols, gameMode, sigmoidThreshold, d_kernelMatrix, d_colors);
     // activate_gameOfLife_convolution_kernel<<<blocks, threads>>>(d_states, d_gameLife, gamelife.size(), gridRows, gridCols, gameMode, sigmoidThreshold, kernelWeightEdge, kernelWeightCorner);
-
     // activate_gameOfLife_kernel<<<blocks, threads>>>(d_gameLife, gamelife.size(), gridRows, gridCols);
+
+    // commitNextEnergy_kernel<<<blocks, threads>>> (d_gameLife, gamelife.size());
+    // commitNextState_kernel<<<blocks, threads>>> (d_gameLife, gamelife.size());
     commitNextEnergy_kernel<<<blocks, threads>>> (d_gameLife, gamelife.size());
+    thresholdAndCommit_kernel<<<blocks, threads>>> (d_gameLife, gamelife.size(), d_colors, colorPallete.size(), .05f);
+
     cudaFree(d_states);
-    // cudaFree(d_kernelMatrix);
+  
     cudaFree(d_colors);
     cudaFree(deviceKernel);
 }
@@ -938,7 +1021,8 @@ void CUDAHandler::drawGameLife(cudaSurfaceObject_t &surface, GameLife *&d_gameLi
 {
     int threads = 256;
     int blocks = (gamelife.size() + threads -1 ) / threads;
-    drawParticles_kernel<<<blocks, threads>>>(surface, d_gameLife, gamelife.size(), width, height, zoom, panX, panY);
+    // drawParticles_kernel<<<blocks, threads>>>(surface, d_gameLife, gamelife.size(), width, height, zoom, panX, panY);
+    drawParticles_kernel2<<<blocks, threads>>>(surface, d_gameLife, gamelife.size(), width, height, zoom, panX, panY);
 }
 
 void CUDAHandler::disturbeGameLife(vec2 mousePosition)

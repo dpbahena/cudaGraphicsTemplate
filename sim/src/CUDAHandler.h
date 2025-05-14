@@ -166,6 +166,7 @@ class CUDAHandler {
         float kernelSigma = 0.65f;
         float mu = 0.16f;
         float kernelRadius = 8.0f;
+        float conv_dt = .01;
 
 
   
